@@ -1,0 +1,9 @@
+{
+  "name": "@rs-csv/core-linux-x64-gnu",
+  "version": "0.1.0",
+  "os": ["linux"],
+  "cpu": ["x64"],
+  "main": "rs-csv.linux-x64-gnu.node",
+  "files": ["rs-csv.linux-x64-gnu.node"],
+  "libc": ["glibc"]
+}

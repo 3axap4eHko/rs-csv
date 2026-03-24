@@ -1,0 +1,17 @@
+{
+  "private": true,
+  "scripts": {
+    "build:napi": "cd crates/napi && RUSTFLAGS=\"-C target-cpu=native\" ./node_modules/.bin/napi build --release",
+    "build:wasm": "RUSTFLAGS=\"-C target-feature=+simd128\" wasm-pack build crates/wasm --target nodejs --release && echo 'exports.memory = wasm.memory;' >> crates/wasm/pkg/rs_csv_wasm.js",
+    "build": "pnpm run build:napi && pnpm run build:wasm",
+    "test": "bun test packages/rs-csv/test/",
+    "bench": "bun run packages/rs-csv/bench/bench.ts"
+  },
+  "devDependencies": {
+    "papaparse": "^5",
+    "@types/papaparse": "^5"
+  },
+  "workspaces": [
+    "packages/*"
+  ]
+}

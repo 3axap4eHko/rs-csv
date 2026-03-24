@@ -1,0 +1,8 @@
+[package]
+name = "rs-csv-core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+fast-float2.workspace = true
+memchr.workspace = true
