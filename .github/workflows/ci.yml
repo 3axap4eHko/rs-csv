@@ -40,6 +40,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+      - uses: goto-bus-stop/setup-zig@v2
+        if: matrix.cross
       - run: cd packages/rs-csv && ./node_modules/.bin/napi build --release --platform --target ${{ matrix.target }} --manifest-path ../../crates/napi/Cargo.toml -o artifacts ${{ matrix.cross && '--cross-compile' || '' }}
       - uses: actions/upload-artifact@v4
         with:
