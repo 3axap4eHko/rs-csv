@@ -74,8 +74,8 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: bindings-${{ matrix.target }}
-          path: packages/rs-csv/artifacts/
-      - run: cd packages/rs-csv && ./node_modules/.bin/napi artifacts -d artifacts
+          path: artifacts/
+      - run: cp artifacts/*.node crates/napi/index.node
       - run: cd packages/rs-csv && pnpm build
       - run: bun test packages/rs-csv/test/
 
