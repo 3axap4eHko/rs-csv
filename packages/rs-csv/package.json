@@ -1,6 +1,6 @@
 {
-  "name": "rs-csv",
-  "version": "0.1.0",
+  "name": "@rs-csv/core",
+  "version": "0.0.0",
   "type": "module",
   "sideEffects": false,
   "main": "./dist/parse.js",
@@ -12,20 +12,24 @@
     }
   },
   "files": ["dist"],
-  "scripts": {
-    "build": "tsc"
+  "napi": {
+    "binaryName": "rs-csv",
+    "targets": [
+      "x86_64-unknown-linux-gnu",
+      "aarch64-unknown-linux-gnu",
+      "aarch64-unknown-linux-musl",
+      "x86_64-apple-darwin",
+      "aarch64-apple-darwin",
+      "x86_64-pc-windows-msvc"
+    ]
   },
-  "optionalDependencies": {
-    "@rs-csv/core-linux-x64-gnu": "0.1.0",
-    "@rs-csv/core-linux-arm64-gnu": "0.1.0",
-    "@rs-csv/core-linux-arm64-musl": "0.1.0",
-    "@rs-csv/core-darwin-x64": "0.1.0",
-    "@rs-csv/core-darwin-arm64": "0.1.0",
-    "@rs-csv/core-win32-x64-msvc": "0.1.0",
-    "@rs-csv/core-wasm32": "0.1.0"
+  "scripts": {
+    "build": "tsc",
+    "version": "napi version",
+    "prepublishOnly": "napi prepublish -t npm"
   },
   "devDependencies": {
     "typescript": "^5",
-    "@napi-rs/cli": "^2"
+    "@napi-rs/cli": "^3"
   }
 }

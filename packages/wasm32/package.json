@@ -1,6 +1,0 @@
-{
-  "name": "@rs-csv/core-wasm32",
-  "version": "0.1.0",
-  "main": "rs-csv.wasm32.js",
-  "files": ["rs-csv.wasm32.js", "rs-csv.wasm32.wasm"]
-}

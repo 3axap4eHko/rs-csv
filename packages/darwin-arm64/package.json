@@ -1,8 +1,0 @@
-{
-  "name": "@rs-csv/core-darwin-arm64",
-  "version": "0.1.0",
-  "os": ["darwin"],
-  "cpu": ["arm64"],
-  "main": "rs-csv.darwin-arm64.node",
-  "files": ["rs-csv.darwin-arm64.node"]
-}
