@@ -14,8 +14,8 @@ pub fn wasm_free(ptr: *mut u8, size: usize) {
 }
 
 #[wasm_bindgen]
-pub fn parse_csv(input_ptr: *const u8, input_len: usize, cmd_ptr: *mut u8, cmd_len: usize, offset: usize) -> usize {
+pub fn parse_csv(input_ptr: *const u8, input_len: usize, cmd_ptr: *mut u8, cmd_len: usize, offset: usize, typed: bool) -> usize {
     let input = unsafe { std::slice::from_raw_parts(input_ptr, input_len) };
     let cmd_buf = unsafe { std::slice::from_raw_parts_mut(cmd_ptr, cmd_len) };
-    rs_csv_core::parse(input, cmd_buf, offset)
+    rs_csv_core::parse(input, cmd_buf, offset, typed)
 }

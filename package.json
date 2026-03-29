@@ -8,8 +8,12 @@
     "bench": "bun run packages/rs-csv/bench/bench.ts"
   },
   "devDependencies": {
+    "@types/papaparse": "^5",
+    "csv-rex": "^0.7.0",
+    "d3-dsv": "^3.0.1",
+    "overtake": "^2.0.3",
     "papaparse": "^5",
-    "@types/papaparse": "^5"
+    "udsv": "^0.7.3"
   },
   "workspaces": [
     "packages/*"

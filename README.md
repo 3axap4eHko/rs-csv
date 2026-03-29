@@ -1,5 +1,9 @@
 # rs-csv
 
+[![npm version](https://img.shields.io/npm/v/@rs-csv/core)](https://www.npmjs.com/package/@rs-csv/core)
+[![npm downloads](https://img.shields.io/npm/dm/@rs-csv/core)](https://www.npmjs.com/package/@rs-csv/core)
+[![CI](https://github.com/3axap4eHko/rs-csv/actions/workflows/ci.yml/badge.svg)](https://github.com/3axap4eHko/rs-csv/actions/workflows/ci.yml)
+
 High-performance CSV parsing library with a Rust core and SIMD acceleration, available as a Node.js native addon and WebAssembly module.
 
 ## Packages
@@ -29,14 +33,17 @@ The parser produces a flat binary command stream (fixed 9-byte frames) that refe
 
 ### Performance
 
-100K rows x 10 columns (11 MB):
+100K rows x 10 columns, mixed types (11 MB, Node.js, Linux x64). Benchmarked with [overtake](https://github.com/3axap4ehko/overtake).
 
-| Parser | Throughput | vs @rs-csv/core |
-|--------|------------|-----------------|
-| @rs-csv/core (native SIMD) | ~1.4 GB/s | 1x |
-| @rs-csv/core (WASM+SIMD) | ~1.2 GB/s | 1.1x |
-| PapaParse (typed) | ~80 MB/s | ~18x slower |
-| PapaParse (strings only) | ~180 MB/s | ~8x slower |
+| Parser | ops/s | vs @rs-csv/core | Heap |
+|--------|-------|-----------------|------|
+| **@rs-csv/core (strings)** | **356** | **1x** | **~0** |
+| **@rs-csv/core (typed)** | **114** | 3.1x slower | **123 KB** |
+| uDSV (strings) | 51.9 | 6.9x slower | 242 MB |
+| d3-dsv (strings) | 24.2 | 14.7x slower | 94 MB |
+| uDSV (typed) | 20.5 | 17.4x slower | 310 MB |
+| PapaParse (strings) | 20.1 | 17.7x slower | 92 MB |
+| PapaParse (typed) | 8.8 | 40.5x slower | 304 MB |
 
 ## Development
 

@@ -2,7 +2,7 @@ import { createRequire } from "module";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 
-export type NativeParse = (input: Buffer | Uint8Array, cmdBuf: Buffer | Uint8Array, offset: number) => number | bigint;
+export type NativeParse = (input: Buffer | Uint8Array, cmdBuf: Buffer | Uint8Array, offset: number, typed: boolean) => number | bigint;
 
 const PLATFORM_PACKAGES: Record<string, string> = {
   "linux-x64": "@rs-csv/core-linux-x64-gnu",

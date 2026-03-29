@@ -1,23 +1,7 @@
-import { parseRaw } from "../src/parse.ts";
-import { createRequire } from "module";
-import { resolve, dirname } from "path";
-import { fileURLToPath } from "url";
-
-const require = createRequire(import.meta.url);
-const dir = dirname(fileURLToPath(import.meta.url));
-const Papa = require("papaparse");
-
-// wasm loaded from build output in crates/wasm/pkg/
-let wasmBinding: any;
-try {
-  wasmBinding = require(resolve(dir, "../../../crates/wasm/pkg/rs_csv_wasm.js"));
-} catch {
-  console.log("wasm not built, skipping wasm benchmarks. Run: RUSTFLAGS=\"-C target-feature=+simd128\" wasm-pack build crates/wasm --target nodejs --release");
-}
+import 'overtake';
 
 const ROWS = 100_000;
 const COLS = 10;
-const RUNS = 10;
 
 function generateCsv(rows: number, cols: number): string {
   const header = Array.from({ length: cols }, (_, i) => `col_${i}`).join(",");
@@ -36,44 +20,87 @@ function generateCsv(rows: number, cols: number): string {
   return lines.join("\n");
 }
 
-function bench(name: string, fn: () => void): number {
-  for (let i = 0; i < 3; i++) fn();
-  let total = 0;
-  for (let i = 0; i < RUNS; i++) {
-    const t0 = performance.now();
-    fn();
-    total += performance.now() - t0;
-  }
-  return total / RUNS;
-}
-
 const csv = generateCsv(ROWS, COLS);
-const inputBuf = Buffer.from(csv);
-const inputU8 = new Uint8Array(inputBuf);
-const cmdBuf = Buffer.alloc(64 * 1024 * 1024);
-const mb = inputBuf.length / 1024 / 1024;
+const mb = Buffer.byteLength(csv) / 1024 / 1024;
+console.log(`CSV: ${ROWS} rows x ${COLS} cols = ${mb.toFixed(2)} MB\n`);
 
-console.log(`CSV: ${ROWS} rows x ${COLS} cols = ${mb.toFixed(2)} MB`);
-console.log(`Runs: ${RUNS}\n`);
+const suite = benchmark(`${ROWS} rows x ${COLS} cols`, () => [csv, Buffer.from(csv)] as const);
 
-const native = bench("native", () => parseRaw(inputBuf, cmdBuf));
-console.log(`rs-csv native (SIMD):    ${native.toFixed(2)}ms  (${(mb / (native / 1000)).toFixed(0)} MB/s)`);
-
-if (wasmBinding) {
-  const wasmInputPtr = wasmBinding.wasm_alloc(inputU8.length);
-  const wasmCmdSize = 64 * 1024 * 1024;
-  const wasmCmdPtr = wasmBinding.wasm_alloc(wasmCmdSize);
-  new Uint8Array(wasmBinding.memory.buffer).set(inputU8, wasmInputPtr);
-
-  const wasmTime = bench("wasm", () => wasmBinding.parse_csv(wasmInputPtr, inputU8.length, wasmCmdPtr, wasmCmdSize));
-  console.log(`rs-csv wasm+SIMD:        ${wasmTime.toFixed(2)}ms  (${(mb / (wasmTime / 1000)).toFixed(0)} MB/s)  ${(wasmTime / native).toFixed(1)}x vs native`);
-
-  wasmBinding.wasm_free(wasmInputPtr, inputU8.length);
-  wasmBinding.wasm_free(wasmCmdPtr, wasmCmdSize);
+function napiSetup() {
+  return async () => {
+    const { resolve, dirname } = await import('node:path');
+    const { fileURLToPath } = await import('node:url');
+    const { createRequire } = await import('node:module');
+    const require = createRequire(import.meta.url);
+    const dir = dirname(fileURLToPath(import.meta.url));
+    const devPath = resolve(dir, '../../../crates/napi/index.node');
+    const parseCsv = require(devPath).parseCsv;
+    const cmdBuf = Buffer.alloc(64 * 1024 * 1024);
+    return { parseCsv, cmdBuf };
+  };
 }
 
-const papaTyped = bench("papa-typed", () => Papa.parse(csv, { header: false, skipEmptyLines: true, dynamicTyping: true }));
-const papaStr = bench("papa-str", () => Papa.parse(csv, { header: false, skipEmptyLines: true }));
+suite
+  .target('@rs-csv/core (typed)', napiSetup())
+  .measure('parse', ({ parseCsv, cmdBuf }, [,input]) => {
+    parseCsv(input, cmdBuf, 0, true);
+  });
 
-console.log(`PapaParse (typed):       ${papaTyped.toFixed(2)}ms  ${(papaTyped / native).toFixed(1)}x vs native`);
-console.log(`PapaParse (strings):     ${papaStr.toFixed(2)}ms  ${(papaStr / native).toFixed(1)}x vs native`);
+suite
+  .target('@rs-csv/core (strings)', napiSetup())
+  .measure('parse', ({ parseCsv, cmdBuf }, [,input]) => {
+    parseCsv(input, cmdBuf, 0, false);
+  });
+
+suite
+  .target('uDSV (typed)', async () => {
+    const { inferSchema, initParser } = await import('udsv');
+    return { inferSchema, initParser };
+  })
+  .measure('parse', ({ inferSchema, initParser }, [csv]) => {
+    const schema = inferSchema(csv);
+    const parser = initParser(schema);
+    parser.typedArrs(csv);
+  });
+
+suite
+  .target('uDSV (strings)', async () => {
+    const { inferSchema, initParser } = await import('udsv');
+    return { inferSchema, initParser };
+  })
+  .measure('parse', ({ inferSchema, initParser }, [csv]) => {
+    const schema = inferSchema(csv);
+    const parser = initParser(schema);
+    parser.stringArrs(csv);
+  });
+
+suite
+  .target('PapaParse (typed)', async () => {
+    const { createRequire } = await import('node:module');
+    const require = createRequire(import.meta.url);
+    const Papa = require('papaparse');
+    return { Papa };
+  })
+  .measure('parse', ({ Papa }, [csv]) => {
+    Papa.parse(csv, { header: false, skipEmptyLines: true, dynamicTyping: true });
+  });
+
+suite
+  .target('PapaParse (strings)', async () => {
+    const { createRequire } = await import('node:module');
+    const require = createRequire(import.meta.url);
+    const Papa = require('papaparse');
+    return { Papa };
+  })
+  .measure('parse', ({ Papa }, [csv]) => {
+    Papa.parse(csv, { header: false, skipEmptyLines: true });
+  });
+
+suite
+  .target('d3-dsv', async () => {
+    const { csvParse } = await import('d3-dsv');
+    return { csvParse };
+  })
+  .measure('parse', ({ csvParse }, [csv]) => {
+    csvParse(csv);
+  });

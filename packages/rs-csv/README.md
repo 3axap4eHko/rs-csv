@@ -1,6 +1,10 @@
 # @rs-csv/core
 
-Fast CSV parser powered by Rust with SIMD acceleration. Parses CSV into typed JavaScript values (numbers, booleans, bigints, nulls) with zero-copy string handling.
+[![npm version](https://img.shields.io/npm/v/@rs-csv/core)](https://www.npmjs.com/package/@rs-csv/core)
+[![npm downloads](https://img.shields.io/npm/dm/@rs-csv/core)](https://www.npmjs.com/package/@rs-csv/core)
+[![CI](https://github.com/3axap4eHko/rs-csv/actions/workflows/ci.yml/badge.svg)](https://github.com/3axap4eHko/rs-csv/actions/workflows/ci.yml)
+
+The fastest CSV parser for JavaScript. Powered by Rust with SIMD acceleration. Parses CSV into typed JavaScript values (numbers, booleans, bigints, nulls) with zero-copy string handling.
 
 ## Install
 
@@ -40,6 +44,7 @@ interface ParseResult {
 }
 
 interface ParseOptions {
+  typed?: boolean;       // auto-detect types (default true), false for all strings
   bufferSizeMB?: number; // internal command buffer size, default 16
 }
 ```
@@ -65,14 +70,17 @@ Quoted values are always strings: `"42"` becomes `"42"`, not `42`.
 
 ## Performance
 
-100K rows x 10 columns (11 MB):
+100K rows x 10 columns, mixed types (11 MB, Node.js, Linux x64). Benchmarked with [overtake](https://github.com/3axap4ehko/overtake) using isolated worker threads and statistical convergence.
 
-| Parser | Time | Throughput | vs native |
-|--------|------|------------|-----------|
-| @rs-csv/core (SIMD) | ~8ms | ~1.4 GB/s | 1x |
-| @rs-csv/core (WASM+SIMD) | ~9ms | ~1.2 GB/s | 1.1x |
-| PapaParse (typed) | ~140ms | - | ~18x slower |
-| PapaParse (strings) | ~60ms | - | ~8x slower |
+| Parser | ops/s | vs @rs-csv/core | Heap |
+|--------|-------|-----------------|------|
+| **@rs-csv/core (strings)** | **356** | **1x** | **~0** |
+| **@rs-csv/core (typed)** | **114** | 3.1x slower | **123 KB** |
+| uDSV (strings) | 51.9 | 6.9x slower | 242 MB |
+| d3-dsv (strings) | 24.2 | 14.7x slower | 94 MB |
+| uDSV (typed) | 20.5 | 17.4x slower | 310 MB |
+| PapaParse (strings) | 20.1 | 17.7x slower | 92 MB |
+| PapaParse (typed) | 8.8 | 40.5x slower | 304 MB |
 
 ## How it works
 

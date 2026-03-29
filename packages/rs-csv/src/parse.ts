@@ -10,6 +10,7 @@ const DEFAULT_BUF = 16 * MB;
 
 export interface ParseOptions {
   bufferSizeMB?: number;
+  typed?: boolean;
 }
 
 let parseFn: ReturnType<typeof loadParser> | undefined;
@@ -30,7 +31,7 @@ export function parse(csv: string | Buffer, opts?: ParseOptions): ParseResult {
   let headerDone = false;
 
   for (let offset = 0;;) {
-    const consumed = Number(parseFn!(input, cmdBuf, offset));
+    const consumed = Number(parseFn!(input, cmdBuf, offset, opts?.typed !== false));
     if (consumed === 0) break;
     const result = interpret(input, cmdBuf);
     if (!headerDone) {
@@ -44,7 +45,7 @@ export function parse(csv: string | Buffer, opts?: ParseOptions): ParseResult {
   return { headers, rows };
 }
 
-export function parseRaw(input: Buffer, cmdBuf: Buffer, offset: number = 0): number {
+export function parseRaw(input: Buffer, cmdBuf: Buffer, offset: number = 0, typed: boolean = true): number {
   ensureLoaded();
-  return Number(parseFn!(input, cmdBuf, offset));
+  return Number(parseFn!(input, cmdBuf, offset, typed));
 }

@@ -12,7 +12,7 @@ pub const EOL_BIT: u8 = 0x80;
 /// Parses CSV bytes starting at `offset` into a command stream.
 /// Returns input bytes consumed. 0 means nothing left to parse.
 /// Stops at a row boundary when the command buffer is full.
-pub fn parse(input: &[u8], output: &mut [u8], offset: usize) -> usize {
+pub fn parse(input: &[u8], output: &mut [u8], offset: usize, typed: bool) -> usize {
     if offset >= input.len() { return 0; }
     let bytes = &input[offset..];
 
@@ -22,17 +22,17 @@ pub fn parse(input: &[u8], output: &mut [u8], offset: usize) -> usize {
             && is_x86_feature_detected!("sse4.1")
             && is_x86_feature_detected!("pclmulqdq")
         {
-            return unsafe { parse_simd_x86(bytes, output, offset) };
+            return unsafe { parse_simd_x86(bytes, output, offset, typed) };
         }
     }
 
     #[cfg(target_arch = "wasm32")]
     {
-        return parse_simd_wasm(bytes, output, offset);
+        return parse_simd_wasm(bytes, output, offset, typed);
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    parse_scalar(bytes, output, offset)
+    parse_scalar(bytes, output, offset, typed)
 }
 
 struct ParseState {
@@ -47,14 +47,15 @@ struct ParseState {
     row_start_wp: usize,
     last_row_end: usize,
     input_offset: usize,
+    typed: bool,
 }
 
 impl ParseState {
-    fn new(input_offset: usize) -> Self {
+    fn new(input_offset: usize, typed: bool) -> Self {
         Self {
             wp: 0, field_start: 0, in_quoted: false, has_escapes: false,
             is_header: input_offset == 0, fields_in_row: 0, after_comma: false,
-            full: false, row_start_wp: 0, last_row_end: 0, input_offset,
+            full: false, row_start_wp: 0, last_row_end: 0, input_offset, typed,
         }
     }
 
@@ -72,13 +73,13 @@ impl ParseState {
 // --- Shared SIMD delimiter processing ---
 
 fn process_simd_chunks(
-    bytes: &[u8], buf: &mut [u8], input_offset: usize,
+    bytes: &[u8], buf: &mut [u8], input_offset: usize, typed: bool,
     classify: impl Fn(usize) -> (u64, u64, u64),
     prefix_xor: impl Fn(u64) -> u64,
 ) -> usize {
     let len = bytes.len();
     let buf_len = buf.len().saturating_sub(9);
-    let mut s = ParseState::new(input_offset);
+    let mut s = ParseState::new(input_offset, typed);
     let mut quote_carry: u64 = 0;
 
     if input_offset == 0 && len >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF {
@@ -208,7 +209,7 @@ fn prefix_xor_shift(mut x: u64) -> u64 {
 
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "ssse3,sse4.1,pclmulqdq")]
-unsafe fn parse_simd_x86(bytes: &[u8], buf: &mut [u8], input_offset: usize) -> usize {
+unsafe fn parse_simd_x86(bytes: &[u8], buf: &mut [u8], input_offset: usize, typed: bool) -> usize {
     use std::arch::x86_64::*;
 
     let lo_lut = _mm_setr_epi8(0, 0, 0b010, 0, 0, 0, 0, 0, 0, 0, 0b100, 0, 0b001, 0b100, 0, 0);
@@ -219,7 +220,7 @@ unsafe fn parse_simd_x86(bytes: &[u8], buf: &mut [u8], input_offset: usize) -> u
     let newline_bit = _mm_set1_epi8(0b100);
 
     process_simd_chunks(
-        bytes, buf, input_offset,
+        bytes, buf, input_offset, typed,
         |chunk_idx| {
             let base = chunk_idx * 64;
             let mut cm: u64 = 0;
@@ -255,7 +256,7 @@ unsafe fn parse_simd_x86(bytes: &[u8], buf: &mut [u8], input_offset: usize) -> u
 // --- wasm32 SIMD ---
 
 #[cfg(target_arch = "wasm32")]
-fn parse_simd_wasm(bytes: &[u8], buf: &mut [u8], input_offset: usize) -> usize {
+fn parse_simd_wasm(bytes: &[u8], buf: &mut [u8], input_offset: usize, typed: bool) -> usize {
     use std::arch::wasm32::*;
 
     let lo_lut = u8x16(0, 0, 0b010, 0, 0, 0, 0, 0, 0, 0, 0b100, 0, 0b001, 0b100, 0, 0);
@@ -266,7 +267,7 @@ fn parse_simd_wasm(bytes: &[u8], buf: &mut [u8], input_offset: usize) -> usize {
     let newline_val = u8x16_splat(0b100);
 
     process_simd_chunks(
-        bytes, buf, input_offset,
+        bytes, buf, input_offset, typed,
         |chunk_idx| {
             let base = chunk_idx * 64;
             let mut cm: u64 = 0;
@@ -297,8 +298,8 @@ fn parse_simd_wasm(bytes: &[u8], buf: &mut [u8], input_offset: usize) -> usize {
 // --- Scalar fallback ---
 
 #[cfg(not(target_arch = "wasm32"))]
-fn parse_scalar(bytes: &[u8], buf: &mut [u8], input_offset: usize) -> usize {
-    let mut s = ParseState::new(input_offset);
+fn parse_scalar(bytes: &[u8], buf: &mut [u8], input_offset: usize, typed: bool) -> usize {
+    let mut s = ParseState::new(input_offset, typed);
     if input_offset == 0 && bytes.len() >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF {
         s.field_start = 3;
     }
@@ -443,6 +444,16 @@ fn emit_field(
     let abs_start = start + s.input_offset;
 
     if s.is_header {
+        if has_escapes {
+            write_str_escaped(bytes, buf, buf_len, s, abs_start, start, flen, is_last);
+        } else {
+            write_slice(buf, s, OP_STR, abs_start, flen, is_last);
+        }
+        s.field_start = end;
+        return;
+    }
+
+    if !s.typed {
         if has_escapes {
             write_str_escaped(bytes, buf, buf_len, s, abs_start, start, flen, is_last);
         } else {
