@@ -1,6 +1,17 @@
 {
   "name": "@rs-csv/core",
   "version": "0.0.0",
+  "description": "Fast CSV parser powered by Rust with SIMD acceleration",
+  "keywords": ["csv", "parser", "rust", "simd", "napi", "fast", "typed"],
+  "license": "MIT",
+  "author": "Ivan Zakharchanka <3axap4eHko@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/3axap4eHko/rs-csv.git",
+    "directory": "packages/rs-csv"
+  },
+  "homepage": "https://github.com/3axap4eHko/rs-csv/tree/master/packages/rs-csv",
+  "bugs": "https://github.com/3axap4eHko/rs-csv/issues",
   "type": "module",
   "sideEffects": false,
   "main": "./dist/parse.js",
@@ -11,7 +22,7 @@
       "default": "./dist/parse.js"
     }
   },
-  "files": ["dist"],
+  "files": ["dist", "README.md"],
   "napi": {
     "binaryName": "rs-csv",
     "targets": [
