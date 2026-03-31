@@ -14,12 +14,12 @@
   "bugs": "https://github.com/3axap4eHko/rs-csv/issues",
   "type": "module",
   "sideEffects": false,
-  "main": "./dist/parse.js",
-  "types": "./dist/parse.d.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/parse.d.ts",
-      "default": "./dist/parse.js"
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
     }
   },
   "files": ["dist", "README.md"],

@@ -1,106 +1,103 @@
 import 'overtake';
 
-const ROWS = 100_000;
+const ROWS = 10_000;
 const COLS = 10;
 
-function generateCsv(rows: number, cols: number): string {
-  const header = Array.from({ length: cols }, (_, i) => `col_${i}`).join(",");
+function generateCsv(rows: number, cols: number, quoted: boolean): string {
+  const header = Array.from({ length: cols }, (_, i) => `col_${i}`).join(',');
   const lines = [header];
   for (let i = 0; i < rows; i++) {
     const row: string[] = [];
     for (let j = 0; j < cols; j++) {
-      const mod = j % 4;
+      const mod = j % 6;
       if (mod === 0) row.push(String(Math.floor(Math.random() * 100000)));
       else if (mod === 1) row.push(`user${i}@example.com`);
       else if (mod === 2) row.push(String(Math.random() > 0.5));
-      else row.push(`2024-01-${String((i % 28) + 1).padStart(2, "0")}`);
+      else if (quoted && mod === 3) row.push(`"text${j}\nis\nwrapped"`);
+      else if (quoted && mod === 4) row.push(`"he said ""hello"""`);
+      else row.push(`2024-01-${String((i % 28) + 1).padStart(2, '0')}`);
     }
-    lines.push(row.join(","));
+    lines.push(row.join(','));
   }
-  return lines.join("\n");
+  return lines.join('\n');
 }
 
-const csv = generateCsv(ROWS, COLS);
+const csv = generateCsv(ROWS, COLS, false);
+const csvQ = generateCsv(ROWS, COLS, true);
 const mb = Buffer.byteLength(csv) / 1024 / 1024;
 console.log(`CSV: ${ROWS} rows x ${COLS} cols = ${mb.toFixed(2)} MB\n`);
 
-const suite = benchmark(`${ROWS} rows x ${COLS} cols`, () => [csv, Buffer.from(csv)] as const);
+const suite = benchmark(`${ROWS} rows x ${COLS} cols unquoted`, () => csv)
+  .feed(`${ROWS} rows x ${COLS} cols quoted`, () => csvQ);
 
-function napiSetup() {
-  return async () => {
-    const { resolve, dirname } = await import('node:path');
-    const { fileURLToPath } = await import('node:url');
-    const { createRequire } = await import('node:module');
-    const require = createRequire(import.meta.url);
-    const dir = dirname(fileURLToPath(import.meta.url));
-    const devPath = resolve(dir, '../../../crates/napi/index.node');
-    const parseCsv = require(devPath).parseCsv;
-    const cmdBuf = Buffer.alloc(64 * 1024 * 1024);
-    return { parseCsv, cmdBuf };
-  };
-}
+// --- @rs-csv/core ---
+const rscsv = suite.target('@rs-csv/core', async () => {
+  const { parse } = await import('../src/parse.ts');
+  return { parse };
+});
 
-suite
-  .target('@rs-csv/core (typed)', napiSetup())
-  .measure('parse', ({ parseCsv, cmdBuf }, [,input]) => {
-    parseCsv(input, cmdBuf, 0, true);
-  });
+rscsv.measure('parse typed', ({ parse }, csv) => {
+  parse(csv, { type: true });
+});
 
-suite
-  .target('@rs-csv/core (strings)', napiSetup())
-  .measure('parse', ({ parseCsv, cmdBuf }, [,input]) => {
-    parseCsv(input, cmdBuf, 0, false);
-  });
+rscsv.measure('parse raw', ({ parse }, csv) => {
+  parse(csv);
+});
 
-suite
-  .target('uDSV (typed)', async () => {
-    const { inferSchema, initParser } = await import('udsv');
-    return { inferSchema, initParser };
-  })
-  .measure('parse', ({ inferSchema, initParser }, [csv]) => {
-    const schema = inferSchema(csv);
-    const parser = initParser(schema);
-    parser.typedArrs(csv);
-  });
+// --- uDSV ---
+const udsv = suite.target('uDSV', async () => {
+  const { inferSchema, initParser } = await import('udsv');
+  return { inferSchema, initParser };
+});
 
-suite
-  .target('uDSV (strings)', async () => {
-    const { inferSchema, initParser } = await import('udsv');
-    return { inferSchema, initParser };
-  })
-  .measure('parse', ({ inferSchema, initParser }, [csv]) => {
-    const schema = inferSchema(csv);
-    const parser = initParser(schema);
-    parser.stringArrs(csv);
-  });
+udsv.measure('parse typed', ({ initParser, inferSchema }, csv) => {
+  const parser = initParser(inferSchema(csv));
+  parser.typedArrs(csv);
+});
 
-suite
-  .target('PapaParse (typed)', async () => {
-    const { createRequire } = await import('node:module');
-    const require = createRequire(import.meta.url);
-    const Papa = require('papaparse');
-    return { Papa };
-  })
-  .measure('parse', ({ Papa }, [csv]) => {
-    Papa.parse(csv, { header: false, skipEmptyLines: true, dynamicTyping: true });
-  });
+udsv.measure('parse raw', ({ initParser, inferSchema }, csv) => {
+  const parser = initParser(inferSchema(csv));
+  parser.stringArrs(csv);
+});
 
-suite
-  .target('PapaParse (strings)', async () => {
-    const { createRequire } = await import('node:module');
-    const require = createRequire(import.meta.url);
-    const Papa = require('papaparse');
-    return { Papa };
-  })
-  .measure('parse', ({ Papa }, [csv]) => {
-    Papa.parse(csv, { header: false, skipEmptyLines: true });
-  });
+// --- PapaParse ---
+const papa = suite.target('PapaParse', async () => {
+  const { default: { default: Papa } } = await import('papaparse');
+  return { Papa };
+});
 
-suite
-  .target('d3-dsv', async () => {
-    const { csvParse } = await import('d3-dsv');
-    return { csvParse };
-  })
-  .measure('parse', ({ csvParse }, [csv]) => {
-    csvParse(csv);
-  });
+papa.measure('parse typed', ({ Papa }, csv) => {
+  Papa.parse(csv, { header: false, dynamicTyping: true });
+});
+
+papa.measure('parse raw', ({ Papa }, csv) => {
+  Papa.parse(csv, { header: false });
+});
+
+// --- d3-dsv ---
+const d3 = suite.target('d3-dsv', async () => {
+  const { csvParseRows, autoType } = await import('d3-dsv');
+  return { csvParseRows, autoType };
+});
+
+d3.measure('parse typed', ({ csvParseRows, autoType }, csv) => {
+  csvParseRows(csv, autoType);
+});
+
+d3.measure('parse raw', ({ csvParseRows }, csv) => {
+  csvParseRows(csv);
+});
+
+// --- csv-parse ---
+const csvparse = suite.target('csv-parse', async () => {
+  const { parse } = await import('csv-parse/sync');
+  return { parse };
+});
+
+csvparse.measure('parse typed', ({ parse }, csv) => {
+  parse(csv, { cast: true });
+});
+
+csvparse.measure('parse raw', ({ parse }, csv) => {
+  parse(csv);
+});
