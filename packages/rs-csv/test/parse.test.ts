@@ -194,6 +194,17 @@ describe("unicode strings", () => {
       ["Zo\u00eb", "M\u00fcnchen"],
     ]);
   });
+
+  test("non-ascii multi-chunk autotyped input does not truncate", () => {
+    const expectedRow = ["\u{1F600}", "\u{1F600}", "\u{1F600}", "\u{1F600}", "\u{1F600}"];
+    const rowCount = 380_000;
+    const csv = `${expectedRow.join(",")}\n`.repeat(rowCount);
+    const rows = parse(csv, { type: true }) as string[][];
+
+    expect(rows.length).toBe(rowCount);
+    expect(rows[0]).toEqual(expectedRow);
+    expect(rows.at(-1)).toEqual(expectedRow);
+  }, 10000);
 });
 
 describe("line endings", () => {

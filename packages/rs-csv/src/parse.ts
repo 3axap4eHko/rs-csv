@@ -4,6 +4,14 @@ import type { FieldValue, Row, Converter } from "./types.js";
 
 const MB = 1024 * 1024;
 const cmdBuf = Buffer.alloc(16 * MB);
+const emptyInput = new Uint8Array(0);
+
+type ParseSource = {
+  input: Uint8Array;
+  nativeInput: string | Buffer;
+  sliceStr: string | undefined;
+  totalLength: number;
+};
 
 export interface ParseOptions {
   type?: boolean | Converter[];
@@ -56,27 +64,48 @@ function parseUnquotedJS(csv: string): string[][] {
   return rows;
 }
 
-function callRustParse(csv: string, offset: number, typed: boolean, strRow: boolean): [consumed: number, sliceStr: string | undefined, input: Uint8Array] {
-  if (parseFnStr && Buffer.byteLength(csv) === csv.length) {
-    return [Number(parseFnStr(csv, cmdBuf, offset, typed, strRow)), csv, cmdBuf];
+function prepareParseSource(csv: string): ParseSource {
+  if (parseFnStr) {
+    const byteLength = Buffer.byteLength(csv);
+    if (byteLength === csv.length) {
+      return {
+        input: emptyInput,
+        nativeInput: csv,
+        sliceStr: csv,
+        totalLength: byteLength,
+      };
+    }
   }
+
   const input = Buffer.from(csv);
-  const consumed = Number(parseFn(input, cmdBuf, offset, typed, strRow));
-  return [consumed, undefined, input];
+  return {
+    input,
+    nativeInput: input,
+    sliceStr: undefined,
+    totalLength: input.length,
+  };
+}
+
+function callRustParse(source: ParseSource, offset: number, typed: boolean, strRow: boolean): number {
+  if (typeof source.nativeInput === "string") {
+    return Number(parseFnStr!(source.nativeInput, cmdBuf, offset, typed, strRow));
+  }
+  return Number(parseFn(source.nativeInput, cmdBuf, offset, typed, strRow));
 }
 
 function parseQuotedRows(csv: string): string[][] {
-  const [consumed, sliceStr, input] = callRustParse(csv, 0, false, false);
+  const source = prepareParseSource(csv);
+  const consumed = callRustParse(source, 0, false, false);
   if (consumed === 0) {return [];}
 
-  const rows = interpretStrings(input, cmdBuf, sliceStr);
-  if (consumed === csv.length) {return rows;}
+  const rows = interpretStrings(source.input, cmdBuf, source.sliceStr);
+  if (consumed === source.totalLength) {return rows;}
 
   let wi = rows.length;
-  for (let offset = consumed; offset < csv.length;) {
-    const [used, s, inp] = callRustParse(csv, offset, false, false);
+  for (let offset = consumed; offset < source.totalLength;) {
+    const used = callRustParse(source, offset, false, false);
     if (used === 0) {break;}
-    const chunk = interpretStrings(inp, cmdBuf, s);
+    const chunk = interpretStrings(source.input, cmdBuf, source.sliceStr);
     for (let i = 0; i < chunk.length; i++) { rows[wi++] = chunk[i]; }
     offset += used;
   }
@@ -85,17 +114,18 @@ function parseQuotedRows(csv: string): string[][] {
 }
 
 function parseAutotypedRows(csv: string): Row[] {
-  const [consumed, sliceStr, input] = callRustParse(csv, 0, true, false);
+  const source = prepareParseSource(csv);
+  const consumed = callRustParse(source, 0, true, false);
   if (consumed === 0) {return [];}
 
-  const rows = interpretTyped(input, cmdBuf, sliceStr);
-  if (consumed === csv.length) {return rows;}
+  const rows = interpretTyped(source.input, cmdBuf, source.sliceStr);
+  if (consumed === source.totalLength) {return rows;}
 
   let wi = rows.length;
-  for (let offset = consumed; offset < csv.length;) {
-    const [used, s, inp] = callRustParse(csv, offset, true, false);
+  for (let offset = consumed; offset < source.totalLength;) {
+    const used = callRustParse(source, offset, true, false);
     if (used === 0) {break;}
-    const chunk = interpretTyped(inp, cmdBuf, s);
+    const chunk = interpretTyped(source.input, cmdBuf, source.sliceStr);
     for (let i = 0; i < chunk.length; i++) { rows[wi++] = chunk[i]; }
     offset += used;
   }
@@ -104,10 +134,11 @@ function parseAutotypedRows(csv: string): Row[] {
 }
 
 function parseAutotypedWithHeaders(csv: string): Record<string, FieldValue>[] {
-  const [consumed, sliceStr, input] = callRustParse(csv, 0, true, true);
+  const source = prepareParseSource(csv);
+  const consumed = callRustParse(source, 0, true, true);
   if (consumed === 0) {return [];}
 
-  const firstChunk = interpretTyped(input, cmdBuf, sliceStr);
+  const firstChunk = interpretTyped(source.input, cmdBuf, source.sliceStr);
   if (firstChunk.length === 0) {return [];}
 
   const headers = firstChunk[0].map(String);
@@ -120,10 +151,10 @@ function parseAutotypedWithHeaders(csv: string): Record<string, FieldValue>[] {
   }
 
   let wi = rows.length;
-  for (let offset = consumed; offset < csv.length;) {
-    const [used, s, inp] = callRustParse(csv, offset, true, false);
+  for (let offset = consumed; offset < source.totalLength;) {
+    const used = callRustParse(source, offset, true, false);
     if (used === 0) {break;}
-    const chunk = interpretTyped(inp, cmdBuf, s);
+    const chunk = interpretTyped(source.input, cmdBuf, source.sliceStr);
     for (let i = 0; i < chunk.length; i++) {
       const row = chunk[i];
       const obj: Record<string, FieldValue> = {};
