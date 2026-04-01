@@ -40,7 +40,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
-      - uses: goto-bus-stop/setup-zig@v2
+      - uses: mlugg/setup-zig@v1
         if: matrix.cross
       - run: cd packages/rs-csv && ./node_modules/.bin/napi build --release --platform --target ${{ matrix.target }} --manifest-path ../../crates/napi/Cargo.toml -o artifacts ${{ matrix.cross && '--cross-compile' || '' }}
       - uses: actions/upload-artifact@v7
@@ -98,16 +98,18 @@ jobs:
           path: packages/rs-csv/artifacts/
           merge-multiple: true
       - run: cd packages/rs-csv && ./node_modules/.bin/napi artifacts -d artifacts
+      - name: Create GitHub Release
+        run: gh release create "$GITHUB_REF_NAME" --generate-notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Set version and publish
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           TAG=${{ contains(github.ref_name, '-') && 'next' || 'latest' }}
           cd packages/rs-csv
           node -e "const p=require('./package.json'); p.version='${VERSION}'; require('fs').writeFileSync('package.json', JSON.stringify(p,null,2)+'\n')"
-          ./node_modules/.bin/napi pre-publish -t npm --skip-optional-publish
+          ./node_modules/.bin/napi pre-publish -t npm
           for dir in npm/*/; do
-            (cd "$dir" && npm publish --access public --tag "$TAG")
+            (cd "$dir" && npm publish --access public --tag "$TAG" --provenance)
           done
-          npm publish --access public --tag "$TAG"
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          npm publish --access public --tag "$TAG" --provenance
