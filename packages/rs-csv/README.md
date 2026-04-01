@@ -12,6 +12,8 @@ The fastest CSV parser for JavaScript. RFC 4180 compliant. Powered by Rust with 
 npm install @rs-csv/core
 ```
 
+Requires Node.js >= 24.
+
 Platform-specific native binaries are installed automatically via `optionalDependencies`.
 
 Supported platforms:
@@ -67,6 +69,7 @@ type FieldValue = string | number | bigint | boolean | null | undefined;
 | `{ type: true }` | `FieldValue[][]` |
 | `{ headers: true }` | `Record<string, string>[]` |
 | `{ type: true, headers: true }` | `Record<string, FieldValue>[]` |
+| `{ type: [converters] }` | `unknown[][]` |
 | `{ type: [converters], headers: true }` | `Record<string, unknown>[]` |
 
 ## Type detection
@@ -92,27 +95,21 @@ Quoted values are always strings: `"42"` becomes `"42"`, not `42`.
 
 | Parser | Unquoted | Quoted | vs @rs-csv/core |
 |--------|----------|--------|-----------------|
-| **@rs-csv/core** | **1,100** | **425** | **1x** |
-| uDSV | 796 | 344 | 1.2-1.4x slower |
-| d3-dsv | 329 | 184 | 2.3-3.3x slower |
-| PapaParse | 240 | 151 | 2.8-4.6x slower |
-| csv-parse | 51 | 45 | 9.4-21.6x slower |
+| **@rs-csv/core** | **1,115** | **708** | **1x** |
+| uDSV | 801 | 338 | 1.4-2.1x slower |
+| d3-dsv | 341 | 194 | 3.3-3.6x slower |
+| PapaParse | 219 | 142 | 5.0-5.1x slower |
+| csv-parse | 53 | 46 | 15.4-21.0x slower |
 
 ### Typed output
 
 | Parser | Unquoted | Quoted | vs @rs-csv/core |
 |--------|----------|--------|-----------------|
-| **@rs-csv/core** | **408** | **425** | **1x** |
-| uDSV | 202 | 209 | 2.0x slower |
-| PapaParse | 91 | 78 | 4.5-5.4x slower |
-| d3-dsv | 61 | 70 | 6.1-6.7x slower |
-| csv-parse | 39 | 32 | 10.5-13.3x slower |
-
-## How it works
-
-The Rust core uses SIMD character classification (SSE4.1 + PCLMULQDQ on x86_64, simd128 on WASM) to identify structural characters -- commas, quotes, newlines -- 64 bytes at a time. Carryless multiply computes quote parity across each chunk in a single instruction, instantly determining which delimiters are inside or outside quoted fields.
-
-The parser writes field offsets into a shared binary buffer. The JavaScript interpreter reads these offsets and extracts fields using `String.slice()`, producing V8 SlicedStrings that reference the original input with near-zero allocation cost.
+| **@rs-csv/core** | **461** | **450** | **1x** |
+| uDSV | 219 | 227 | 2.0-2.1x slower |
+| PapaParse | 88 | 74 | 5.2-6.1x slower |
+| d3-dsv | 65 | 72 | 6.3-7.1x slower |
+| csv-parse | 41 | 36 | 11.2-12.5x slower |
 
 ## License
 

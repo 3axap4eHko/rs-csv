@@ -1,0 +1,106 @@
+{
+  "version": 1,
+  "timestamp": "2026-04-01T04:48:11.840Z",
+  "results": {
+    "@rs-csv/core/parse typed/10000 rows x 10 cols unquoted": {
+      "ops": 461,
+      "heapUsedKB": 30398,
+      "dceWarning": false
+    },
+    "@rs-csv/core/parse typed/10000 rows x 10 cols quoted": {
+      "ops": 450,
+      "heapUsedKB": 25903,
+      "dceWarning": false
+    },
+    "@rs-csv/core/parse raw/10000 rows x 10 cols unquoted": {
+      "ops": 1115,
+      "heapUsedKB": 16065,
+      "dceWarning": false
+    },
+    "@rs-csv/core/parse raw/10000 rows x 10 cols quoted": {
+      "ops": 708,
+      "heapUsedKB": 18572,
+      "dceWarning": false
+    },
+    "uDSV/parse typed/10000 rows x 10 cols unquoted": {
+      "ops": 219,
+      "heapUsedKB": 27116,
+      "dceWarning": false
+    },
+    "uDSV/parse typed/10000 rows x 10 cols quoted": {
+      "ops": 227,
+      "heapUsedKB": 31108,
+      "dceWarning": false
+    },
+    "uDSV/parse raw/10000 rows x 10 cols unquoted": {
+      "ops": 801,
+      "heapUsedKB": 7888,
+      "dceWarning": false
+    },
+    "uDSV/parse raw/10000 rows x 10 cols quoted": {
+      "ops": 338,
+      "heapUsedKB": 4736,
+      "dceWarning": false
+    },
+    "PapaParse/parse typed/10000 rows x 10 cols unquoted": {
+      "ops": 87.75,
+      "heapUsedKB": 68393,
+      "dceWarning": false
+    },
+    "PapaParse/parse typed/10000 rows x 10 cols quoted": {
+      "ops": 73.74,
+      "heapUsedKB": 53127,
+      "dceWarning": false
+    },
+    "PapaParse/parse raw/10000 rows x 10 cols unquoted": {
+      "ops": 219,
+      "heapUsedKB": 49805,
+      "dceWarning": false
+    },
+    "PapaParse/parse raw/10000 rows x 10 cols quoted": {
+      "ops": 142,
+      "heapUsedKB": 157046,
+      "dceWarning": false
+    },
+    "d3-dsv/parse typed/10000 rows x 10 cols unquoted": {
+      "ops": 65.36,
+      "heapUsedKB": 35215,
+      "dceWarning": false
+    },
+    "d3-dsv/parse typed/10000 rows x 10 cols quoted": {
+      "ops": 71.76,
+      "heapUsedKB": 30126,
+      "dceWarning": false
+    },
+    "d3-dsv/parse raw/10000 rows x 10 cols unquoted": {
+      "ops": 341,
+      "heapUsedKB": 13598,
+      "dceWarning": false
+    },
+    "d3-dsv/parse raw/10000 rows x 10 cols quoted": {
+      "ops": 194,
+      "heapUsedKB": 29957,
+      "dceWarning": false
+    },
+    "csv-parse/parse typed/10000 rows x 10 cols unquoted": {
+      "ops": 40.89,
+      "heapUsedKB": 53413,
+      "dceWarning": false
+    },
+    "csv-parse/parse typed/10000 rows x 10 cols quoted": {
+      "ops": 35.74,
+      "heapUsedKB": 5422,
+      "dceWarning": false
+    },
+    "csv-parse/parse raw/10000 rows x 10 cols unquoted": {
+      "ops": 53.49,
+      "heapUsedKB": 50871,
+      "dceWarning": false
+    },
+    "csv-parse/parse raw/10000 rows x 10 cols quoted": {
+      "ops": 46.39,
+      "heapUsedKB": 50393,
+      "dceWarning": false
+    }
+  }
+}

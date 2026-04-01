@@ -7,19 +7,20 @@
     "lint": "oxlint packages/rs-csv/src/ && cargo clippy --workspace",
     "fmt": "cargo fmt --all",
     "test": "bun test packages/rs-csv/test/",
-    "bench": "overtake packages/rs-csv/bench/current.ts -w 1 --progress",
+    "bench": "overtake packages/rs-csv/bench/current.ts --pin-cores -w 1 --progress",
     "bench:test": "pnpm bench --compare-baseline .bench-baseline.json",
-    "bench:save": "pnpm bench --save-baseline .bench-baseline.json"
+    "bench:save": "pnpm bench --save-baseline .bench-baseline.json",
+    "bench:full": "overtake packages/rs-csv/bench/full.ts -w 4 --pin-cores --progress --save-baseline .bench-full.json"
   },
   "devDependencies": {
-    "@types/papaparse": "^5",
+    "@types/papaparse": "^5.5.2",
     "csv-parse": "^6.2.1",
     "csv-rex": "^0.7.0",
     "d3-dsv": "^3.0.1",
     "fast-csv": "^5.0.5",
-    "overtake": "^2.0.3",
-    "oxlint": "^1.57.0",
-    "papaparse": "^5",
+    "overtake": "^2.1.0",
+    "oxlint": "^1.58.0",
+    "papaparse": "^5.5.3",
     "udsv": "^0.7.3"
   },
   "workspaces": [

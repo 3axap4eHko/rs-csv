@@ -10,9 +10,7 @@ pub use classify::{
     classify,
 };
 
-pub use scan_positions::{
-    FIELD_CRLF, FIELD_EOL, FIELD_ESCAPED, FIELD_POS_MASK, FIELD_QUOTED, scan_fields, scan_positions,
-};
+pub use scan_positions::{compact_fields, scan_fields, scan_positions};
 
 pub use parse_common::{EOL_BIT, OP_APPEND, OP_BIGINT, OP_BOOL, OP_EOF, OP_NULL, OP_NUM, OP_STR};
 

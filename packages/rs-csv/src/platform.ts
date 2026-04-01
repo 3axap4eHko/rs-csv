@@ -4,7 +4,7 @@ import { fileURLToPath } from "url";
 
 export type NativeParse = (input: Buffer | Uint8Array, cmdBuf: Buffer | Uint8Array, offset: number, typed: boolean, strRow: boolean) => number | bigint;
 export type NativeParseStr = (input: string, cmdBuf: Buffer | Uint8Array, offset: number, typed: boolean, strRow: boolean) => number | bigint;
-export type NativeScanPositions = (input: string, out: Buffer | Uint8Array) => number | bigint;
+export type NativeScanFieldsCompact = (input: Buffer, out: Buffer | Uint8Array) => number | bigint;
 
 const PLATFORM_PACKAGES: Record<string, string> = {
   "linux-x64": "@rs-csv/core-linux-x64-gnu",
@@ -77,7 +77,4 @@ const addon = loadAddon();
 
 export const parseFn = addon.parseCsv as NativeParse;
 export const parseFnStr = addon.parseCsvStr as NativeParseStr | undefined;
-export const scanPosFn = addon.scanPositions as NativeScanPositions | undefined;
-export type NativeScanFields = (input: string | Buffer, out: Buffer | Uint8Array) => number | bigint;
-export const scanFieldsStr = addon.scanFieldsStr as NativeScanFields | undefined;
-export const scanFieldsBuf = addon.scanFieldsBuf as NativeScanFields | undefined;
+export const scanFieldsCompact = addon.scanFieldsCompact as NativeScanFieldsCompact | undefined;

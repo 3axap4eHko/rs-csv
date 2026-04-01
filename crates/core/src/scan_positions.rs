@@ -518,6 +518,61 @@ fn scan_fields_finish(input: &[u8], out: &mut [u8], s: &mut FieldState) {
     write_u32(out, 12, bom);
 }
 
+pub fn compact_fields(input: &mut [u8], pos_buf: &mut [u8]) -> usize {
+    let field_count = u32::from_le_bytes(pos_buf[0..4].try_into().unwrap()) as usize;
+    if field_count == 0 {
+        return 0;
+    }
+
+    let mut rp = u32::from_le_bytes(pos_buf[12..16].try_into().unwrap()) as usize;
+    let mut wp: usize = 0;
+    let mut pos_idx = POS_HEADER;
+
+    for _ in 0..field_count {
+        let entry = u32::from_le_bytes(pos_buf[pos_idx..pos_idx + 4].try_into().unwrap());
+        let end = (entry & FIELD_POS_MASK) as usize;
+        let is_quoted = entry & FIELD_QUOTED != 0;
+        let is_escaped = entry & FIELD_ESCAPED != 0;
+        let is_crlf = entry & FIELD_CRLF != 0;
+        let is_eol = entry & FIELD_EOL != 0;
+
+        if is_quoted {
+            let content_start = rp + 1;
+            let content_end = end - 1;
+            if is_escaped {
+                let mut src = content_start;
+                while src < content_end {
+                    if src + 1 < content_end && input[src] == b'"' && input[src + 1] == b'"' {
+                        input[wp] = b'"';
+                        wp += 1;
+                        src += 2;
+                    } else {
+                        input[wp] = input[src];
+                        wp += 1;
+                        src += 1;
+                    }
+                }
+            } else {
+                let len = content_end - content_start;
+                input.copy_within(content_start..content_end, wp);
+                wp += len;
+            }
+        } else {
+            let len = end - rp;
+            input.copy_within(rp..end, wp);
+            wp += len;
+        }
+
+        let new_entry = wp as u32 | if is_eol { FIELD_EOL } else { 0 };
+        write_u32(pos_buf, pos_idx, new_entry);
+        pos_idx += 4;
+
+        rp = end + if is_crlf { 2 } else { 1 };
+    }
+
+    wp
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

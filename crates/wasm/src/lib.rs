@@ -1,4 +1,5 @@
 #![allow(clippy::missing_safety_doc)]
+#![allow(unsafe_op_in_unsafe_fn)]
 
 use std::alloc::{Layout, alloc, dealloc};
 use wasm_bindgen::prelude::*;

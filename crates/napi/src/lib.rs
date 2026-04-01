@@ -36,13 +36,9 @@ pub fn scan_positions(input: String, mut out: Buffer) -> u32 {
 }
 
 #[napi]
-pub fn scan_fields_str(input: String, mut out: Buffer) -> u32 {
-    rs_csv_core::scan_fields(input.as_bytes(), out.as_mut()) as u32
-}
-
-#[napi]
-pub fn scan_fields_buf(input: Buffer, mut out: Buffer) -> u32 {
-    rs_csv_core::scan_fields(&input, out.as_mut()) as u32
+pub fn scan_fields_compact(mut input: Buffer, mut out: Buffer) -> u32 {
+    rs_csv_core::scan_fields(&input, out.as_mut());
+    rs_csv_core::compact_fields(input.as_mut(), out.as_mut()) as u32
 }
 
 #[napi]
