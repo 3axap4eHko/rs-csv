@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "timestamp": "2026-03-31T23:12:28.088Z",
+  "results": {
+    "@rs-csv/core/parse typed/10000 rows x 10 cols unquoted": {
+      "ops": 452,
+      "heapUsedKB": 29849,
+      "dceWarning": false
+    },
+    "@rs-csv/core/parse typed/10000 rows x 10 cols quoted": {
+      "ops": 453,
+      "heapUsedKB": 19392,
+      "dceWarning": false
+    },
+    "@rs-csv/core/parse raw/10000 rows x 10 cols unquoted": {
+      "ops": 1049,
+      "heapUsedKB": 37454,
+      "dceWarning": false
+    },
+    "@rs-csv/core/parse raw/10000 rows x 10 cols quoted": {
+      "ops": 436,
+      "heapUsedKB": 42514,
+      "dceWarning": false
+    }
+  }
+}

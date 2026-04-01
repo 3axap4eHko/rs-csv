@@ -1,5 +1,5 @@
-import { interpretStrings, interpretTyped } from "./interpret.js";
-import { parseFn, parseFnStr } from "./platform.js";
+import { interpretFields, interpretTyped } from "./interpret.js";
+import { parseFn, parseFnStr, scanFieldsStr, scanFieldsBuf } from "./platform.js";
 import type { FieldValue, Row, Converter } from "./types.js";
 
 const MB = 1024 * 1024;
@@ -94,23 +94,13 @@ function callRustParse(source: ParseSource, offset: number, typed: boolean, strR
 }
 
 function parseQuotedRows(csv: string): string[][] {
-  const source = prepareParseSource(csv);
-  const consumed = callRustParse(source, 0, false, false);
-  if (consumed === 0) {return [];}
-
-  const rows = interpretStrings(source.input, cmdBuf, source.sliceStr);
-  if (consumed === source.totalLength) {return rows;}
-
-  let wi = rows.length;
-  for (let offset = consumed; offset < source.totalLength;) {
-    const used = callRustParse(source, offset, false, false);
-    if (used === 0) {break;}
-    const chunk = interpretStrings(source.input, cmdBuf, source.sliceStr);
-    for (let i = 0; i < chunk.length; i++) { rows[wi++] = chunk[i]; }
-    offset += used;
+  if (scanFieldsStr && Buffer.byteLength(csv) === csv.length) {
+    scanFieldsStr(csv, cmdBuf);
+    return interpretFields(csv, cmdBuf);
   }
-
-  return rows;
+  const buf = Buffer.from(csv);
+  scanFieldsBuf!(buf, cmdBuf);
+  return interpretFields(csv, cmdBuf);
 }
 
 function parseAutotypedRows(csv: string): Row[] {

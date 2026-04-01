@@ -78,3 +78,6 @@ const addon = loadAddon();
 export const parseFn = addon.parseCsv as NativeParse;
 export const parseFnStr = addon.parseCsvStr as NativeParseStr | undefined;
 export const scanPosFn = addon.scanPositions as NativeScanPositions | undefined;
+export type NativeScanFields = (input: string | Buffer, out: Buffer | Uint8Array) => number | bigint;
+export const scanFieldsStr = addon.scanFieldsStr as NativeScanFields | undefined;
+export const scanFieldsBuf = addon.scanFieldsBuf as NativeScanFields | undefined;

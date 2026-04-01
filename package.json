@@ -7,7 +7,9 @@
     "lint": "oxlint packages/rs-csv/src/ && cargo clippy --workspace",
     "fmt": "cargo fmt --all",
     "test": "bun test packages/rs-csv/test/",
-    "bench": "overtake packages/rs-csv/bench/bench.ts -w 1 --progress"
+    "bench": "overtake packages/rs-csv/bench/current.ts -w 1 --progress",
+    "bench:test": "pnpm bench --compare-baseline .bench-baseline.json",
+    "bench:save": "pnpm bench --save-baseline .bench-baseline.json"
   },
   "devDependencies": {
     "@types/papaparse": "^5",

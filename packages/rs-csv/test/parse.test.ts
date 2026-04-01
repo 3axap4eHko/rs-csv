@@ -237,6 +237,11 @@ describe("ragged rows", () => {
     expect(result.length).toBe(2);
   }, 2000);
 
+  test("unquoted: extra columns fold into last field", () => {
+    const result = parse("a,b\n1,2,3");
+    expect(result).toEqual([["a", "b"], ["1", "2,3"]]);
+  });
+
   test("quoted: row with fewer fields does not read stale buffer data", () => {
     // First parse fills cmdBuf with a record at byte offset 13 (field "d")
     parse('"a","b"\n"c","d"');
@@ -247,5 +252,10 @@ describe("ragged rows", () => {
     for (const field of result[1]) {
       expect(field === "z" || field === "").toBe(true);
     }
+  });
+
+  test("quoted: row with more fields than header preserves extra columns", () => {
+    const result = parse('"a","b"\n"1","2","3"');
+    expect(result).toEqual([["a", "b"], ["1", "2", "3"]]);
   });
 });

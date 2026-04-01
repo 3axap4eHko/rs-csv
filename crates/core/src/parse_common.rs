@@ -1,3 +1,5 @@
+#[cfg(target_arch = "x86_64")]
+use crate::shared::{classify_chunk_x86, prefix_xor_x86};
 use crate::shared::{skip_blank_lines, skip_bom, trim_cr, write_u32};
 
 pub const OP_STR: u8 = 0;
@@ -14,7 +16,21 @@ pub(crate) const STR_RECORD_SIZE: usize = 8;
 pub(crate) const STR_ESCAPED_BIT: u32 = 0x4000_0000;
 pub(crate) const STR_EOL_BIT: u32 = 0x8000_0000;
 
-pub(crate) fn parse_dispatch<const TYPED: bool>(
+pub(crate) fn parse_dispatch(
+    bytes: &[u8],
+    output: &mut [u8],
+    offset: usize,
+    str_row: bool,
+    typed: bool,
+) -> usize {
+    if typed {
+        parse_dispatch_inner::<true>(bytes, output, offset, str_row)
+    } else {
+        parse_dispatch_inner::<false>(bytes, output, offset, str_row)
+    }
+}
+
+fn parse_dispatch_inner<const TYPED: bool>(
     bytes: &[u8],
     output: &mut [u8],
     offset: usize,
@@ -263,61 +279,13 @@ unsafe fn parse_simd_x86<const TYPED: bool>(
     input_offset: usize,
     str_row: bool,
 ) -> usize {
-    use std::arch::x86_64::*;
-
-    let lo_lut = _mm_setr_epi8(0, 0, 0b010, 0, 0, 0, 0, 0, 0, 0, 0b100, 0, 0b001, 0, 0, 0);
-    let hi_lut = _mm_setr_epi8(0b100, 0, 0b011, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
-    let mask_0f = _mm_set1_epi8(0x0F);
-    let comma_bit = _mm_set1_epi8(0b001);
-    let quote_bit = _mm_set1_epi8(0b010);
-    let newline_bit = _mm_set1_epi8(0b100);
-
     process_simd_chunks::<TYPED>(
         bytes,
         buf,
         input_offset,
         str_row,
-        |chunk_idx| {
-            let base = chunk_idx * 64;
-            let mut cm: u64 = 0;
-            let mut qm: u64 = 0;
-            let mut nm: u64 = 0;
-
-            for sub in 0..4u32 {
-                let offset = base + sub as usize * 16;
-                let input_vec = _mm_loadu_si128(bytes.as_ptr().add(offset) as *const __m128i);
-                let lo_nibbles = _mm_and_si128(input_vec, mask_0f);
-                let hi_nibbles = _mm_and_si128(_mm_srli_epi16(input_vec, 4), mask_0f);
-                let lo_result = _mm_shuffle_epi8(lo_lut, lo_nibbles);
-                let hi_result = _mm_shuffle_epi8(hi_lut, hi_nibbles);
-                let classified = _mm_and_si128(lo_result, hi_result);
-
-                let shift = sub * 16;
-                cm |= (_mm_movemask_epi8(_mm_cmpeq_epi8(
-                    _mm_and_si128(classified, comma_bit),
-                    comma_bit,
-                )) as u16 as u64)
-                    << shift;
-                qm |= (_mm_movemask_epi8(_mm_cmpeq_epi8(
-                    _mm_and_si128(classified, quote_bit),
-                    quote_bit,
-                )) as u16 as u64)
-                    << shift;
-                nm |= (_mm_movemask_epi8(_mm_cmpeq_epi8(
-                    _mm_and_si128(classified, newline_bit),
-                    newline_bit,
-                )) as u16 as u64)
-                    << shift;
-            }
-
-            (cm, qm, nm)
-        },
-        |x| {
-            let x_vec = _mm_set_epi64x(0, x as i64);
-            let ones = _mm_set_epi64x(0, -1i64);
-            let result = _mm_clmulepi64_si128(x_vec, ones, 0);
-            _mm_extract_epi64(result, 0) as u64
-        },
+        |chunk_idx| classify_chunk_x86(bytes.as_ptr().add(chunk_idx * 64)),
+        |x| prefix_xor_x86(x),
     )
 }
 

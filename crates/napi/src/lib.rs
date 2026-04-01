@@ -36,6 +36,16 @@ pub fn scan_positions(input: String, mut out: Buffer) -> u32 {
 }
 
 #[napi]
+pub fn scan_fields_str(input: String, mut out: Buffer) -> u32 {
+    rs_csv_core::scan_fields(input.as_bytes(), out.as_mut()) as u32
+}
+
+#[napi]
+pub fn scan_fields_buf(input: Buffer, mut out: Buffer) -> u32 {
+    rs_csv_core::scan_fields(&input, out.as_mut()) as u32
+}
+
+#[napi]
 pub fn classify_csv(
     env: Env,
     input: JsString,
