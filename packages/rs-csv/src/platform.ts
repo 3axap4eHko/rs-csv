@@ -78,3 +78,8 @@ const addon = loadAddon();
 export const parseFn = addon.parseCsv as NativeParse;
 export const parseFnStr = addon.parseCsvStr as NativeParseStr | undefined;
 export const scanFieldsCompact = addon.scanFieldsCompact as NativeScanFieldsCompact | undefined;
+export const classifyCsvBuf = addon.classifyCsvBuf as (input: Buffer, cls: Buffer) => number;
+export const inferCsv = addon.inferCsv as (input: Buffer, out: Buffer, hasHeaders: boolean, maxSamples: number) => number | bigint;
+export const parseWithTypes = addon.parseWithTypes as (input: Buffer, posBuf: Buffer, output: Buffer, colTypes: Buffer) => number | bigint;
+export const scanFieldsBuf = addon.scanFieldsBuf as ((input: Buffer, out: Buffer) => number | bigint) | undefined;
+export const memchrIndex = addon.memchrIndex as (input: Buffer, needle: number) => number;

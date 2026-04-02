@@ -1,4 +1,5 @@
 import type { FieldValue, Row } from "./types.js";
+import { readU32LE } from "./types.js";
 
 const decoder = new TextDecoder();
 
@@ -14,13 +15,6 @@ const TYPE_MASK = 0x7f;
 
 const COMPACT_EOL = 0x80000000;
 const COMPACT_POS_MASK = 0x7FFFFFFF;
-
-function readU32LE(buf: Uint8Array, pos: number): number {
-  return (buf[pos]
-    | (buf[pos + 1] << 8)
-    | (buf[pos + 2] << 16)
-    | (buf[pos + 3] << 24)) >>> 0;
-}
 
 function sliceField(str: string | undefined, input: Uint8Array, off: number, len: number): string {
   if (str != null) {return str.slice(off, off + len);}

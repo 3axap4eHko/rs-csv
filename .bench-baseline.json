@@ -1,25 +1,45 @@
 {
   "version": 1,
-  "timestamp": "2026-04-01T04:33:01.629Z",
+  "timestamp": "2026-04-02T17:14:59.894Z",
   "results": {
     "@rs-csv/core/parse typed/10000 rows x 10 cols unquoted": {
-      "ops": 429,
-      "heapUsedKB": 14684,
+      "ops": 366,
+      "heapUsedKB": 30113,
       "dceWarning": false
     },
     "@rs-csv/core/parse typed/10000 rows x 10 cols quoted": {
-      "ops": 422,
-      "heapUsedKB": 34904,
+      "ops": 349,
+      "heapUsedKB": 14507,
       "dceWarning": false
     },
     "@rs-csv/core/parse raw/10000 rows x 10 cols unquoted": {
-      "ops": 1034,
-      "heapUsedKB": 20752,
+      "ops": 613,
+      "heapUsedKB": 29127,
       "dceWarning": false
     },
     "@rs-csv/core/parse raw/10000 rows x 10 cols quoted": {
-      "ops": 555,
-      "heapUsedKB": 31159,
+      "ops": 504,
+      "heapUsedKB": 52245,
+      "dceWarning": false
+    },
+    "@rs-csv/core/parse typed (desc)/10000 rows x 10 cols unquoted": {
+      "ops": 501,
+      "heapUsedKB": 61984,
+      "dceWarning": false
+    },
+    "@rs-csv/core/parse typed (desc)/10000 rows x 10 cols quoted": {
+      "ops": 441,
+      "heapUsedKB": 94617,
+      "dceWarning": false
+    },
+    "@rs-csv/core/parse raw (desc)/10000 rows x 10 cols unquoted": {
+      "ops": 658,
+      "heapUsedKB": 11974,
+      "dceWarning": false
+    },
+    "@rs-csv/core/parse raw (desc)/10000 rows x 10 cols quoted": {
+      "ops": 539,
+      "heapUsedKB": 75476,
       "dceWarning": false
     }
   }

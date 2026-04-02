@@ -8,10 +8,39 @@ pub const CLS_HAS_BOM: u32 = 1 << 4;
 
 pub const CLS_BUF_SIZE: usize = 16;
 
+#[derive(Default)]
+pub struct ClassifyResult {
+    pub rows: u32,
+    pub cols: u32,
+    pub fields: u32,
+    pub flags: u32,
+}
+
+impl ClassifyResult {
+    pub fn write(&self, out: &mut [u8]) {
+        write_u32(out, 0, self.rows);
+        write_u32(out, 4, self.cols);
+        write_u32(out, 8, self.fields);
+        write_u32(out, 12, self.flags);
+    }
+}
+
 pub fn classify(input: &[u8], out: &mut [u8]) {
     if out.len() < CLS_BUF_SIZE {
         return;
     }
+    classify_input(input).write(out);
+}
+
+pub fn classify_input(input: &[u8]) -> ClassifyResult {
+    let bom = skip_bom(input);
+    let mut flags: u32 = if bom > 0 { CLS_HAS_BOM } else { 0 };
+
+    if memchr::memchr(b'"', &input[bom..]).is_none() {
+        return classify_unquoted(input, bom, flags);
+    }
+
+    flags |= CLS_HAS_QUOTES;
 
     #[cfg(target_arch = "x86_64")]
     {
@@ -19,17 +48,61 @@ pub fn classify(input: &[u8], out: &mut [u8]) {
             && is_x86_feature_detected!("sse4.1")
             && is_x86_feature_detected!("pclmulqdq")
         {
-            return unsafe { classify_simd_x86(input, out) };
+            return unsafe { classify_simd_x86(input, bom, flags) };
         }
     }
 
-    classify_scalar(input, out);
+    classify_scalar(input, bom, flags)
 }
 
-fn classify_scalar(input: &[u8], out: &mut [u8]) {
+fn classify_unquoted(input: &[u8], bom: usize, mut flags: u32) -> ClassifyResult {
     let len = input.len();
-    let mut pos = skip_bom(input);
-    let mut flags: u32 = if pos > 0 { CLS_HAS_BOM } else { 0 };
+    let mut pos = bom;
+    let mut rows: u32 = 0;
+    let mut fields: u32 = 0;
+    let mut first_row_fields: u32 = 0;
+
+    while pos < len {
+        match memchr::memchr2(b',', b'\n', &input[pos..]) {
+            None => break,
+            Some(off) => {
+                let abs = pos + off;
+                if input[abs] == b',' {
+                    fields += 1;
+                } else {
+                    if abs > 0 && input[abs - 1] == b'\r' {
+                        flags |= CLS_HAS_CRLF;
+                    }
+                    fields += 1;
+                    rows += 1;
+                    if rows == 1 {
+                        first_row_fields = fields;
+                    }
+                }
+                pos = abs + 1;
+            }
+        }
+    }
+
+    if pos < len || (rows == 0 && len > 0) || fields > rows * first_row_fields.max(1) {
+        fields += 1;
+        rows += 1;
+        if rows == 1 {
+            first_row_fields = fields;
+        }
+    }
+
+    ClassifyResult {
+        rows,
+        cols: first_row_fields,
+        fields,
+        flags,
+    }
+}
+
+fn classify_scalar(input: &[u8], bom: usize, mut flags: u32) -> ClassifyResult {
+    let len = input.len();
+    let mut pos = bom;
     let mut rows: u32 = 0;
     let mut fields: u32 = 0;
     let mut first_row_fields: u32 = 0;
@@ -101,21 +174,21 @@ fn classify_scalar(input: &[u8], out: &mut [u8]) {
         }
     }
 
-    let cols = first_row_fields;
-    write_u32(out, 0, rows);
-    write_u32(out, 4, cols);
-    write_u32(out, 8, fields);
-    write_u32(out, 12, flags);
+    ClassifyResult {
+        rows,
+        cols: first_row_fields,
+        fields,
+        flags,
+    }
 }
 
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "ssse3,sse4.1,pclmulqdq")]
-unsafe fn classify_simd_x86(input: &[u8], out: &mut [u8]) {
+unsafe fn classify_simd_x86(input: &[u8], bom: usize, mut flags: u32) -> ClassifyResult {
     use std::arch::x86_64::*;
 
     let len = input.len();
-    let mut pos: usize = skip_bom(input);
-    let mut flags: u32 = if pos > 0 { CLS_HAS_BOM } else { 0 };
+    let mut pos: usize = bom;
     let mut rows: u32 = 0;
     let mut fields: u32 = 0;
     let mut first_row_fields: u32 = 0;
@@ -281,11 +354,12 @@ unsafe fn classify_simd_x86(input: &[u8], out: &mut [u8]) {
         }
     }
 
-    let cols = first_row_fields;
-    write_u32(out, 0, rows);
-    write_u32(out, 4, cols);
-    write_u32(out, 8, fields);
-    write_u32(out, 12, flags);
+    ClassifyResult {
+        rows,
+        cols: first_row_fields,
+        fields,
+        flags,
+    }
 }
 
 #[cfg(test)]

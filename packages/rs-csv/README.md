@@ -89,27 +89,27 @@ Quoted values are always strings: `"42"` becomes `"42"`, not `42`.
 
 ## Performance
 
-10K rows x 10 columns, mixed types (~1 MB). Node.js on Linux x64. Benchmarked with [overtake](https://github.com/3axap4ehko/overtake) using isolated worker threads and statistical convergence. All values in ops/s (higher is better).
+10K rows x 10 columns, mixed types (~1 MB), fresh strings per iteration. Node.js on Linux x64, pinned cores. Benchmarked with [overtake](https://github.com/3axap4ehko/overtake) using isolated worker threads and statistical convergence. All values in ops/s (higher is better).
 
 ### Raw string output
 
 | Parser | Unquoted | Quoted | vs @rs-csv/core |
 |--------|----------|--------|-----------------|
-| **@rs-csv/core** | **1,115** | **708** | **1x** |
-| uDSV | 801 | 338 | 1.4-2.1x slower |
-| d3-dsv | 341 | 194 | 3.3-3.6x slower |
-| PapaParse | 219 | 142 | 5.0-5.1x slower |
-| csv-parse | 53 | 46 | 15.4-21.0x slower |
+| **@rs-csv/core** | **636** | **510** | **1x** |
+| uDSV | 527 | 245 | 1.2-2.1x slower |
+| d3-dsv | 230 | 155 | 2.8-3.3x slower |
+| PapaParse | 194 | 117 | 3.3-4.4x slower |
+| csv-parse | 52 | 45 | 11.3-12.2x slower |
 
 ### Typed output
 
 | Parser | Unquoted | Quoted | vs @rs-csv/core |
 |--------|----------|--------|-----------------|
-| **@rs-csv/core** | **461** | **450** | **1x** |
-| uDSV | 219 | 227 | 2.0-2.1x slower |
-| PapaParse | 88 | 74 | 5.2-6.1x slower |
-| d3-dsv | 65 | 72 | 6.3-7.1x slower |
-| csv-parse | 41 | 36 | 11.2-12.5x slower |
+| **@rs-csv/core** | **370** | **352** | **1x** |
+| uDSV | 177 | 174 | 2.0-2.1x slower |
+| PapaParse | 82 | 67 | 4.5-5.3x slower |
+| d3-dsv | 61 | 67 | 5.3-6.1x slower |
+| csv-parse | 40 | 36 | 9.3-9.9x slower |
 
 ## License
 

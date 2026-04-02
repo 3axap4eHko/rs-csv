@@ -27,6 +27,47 @@ pub(crate) fn skip_blank_lines(bytes: &[u8], pos: &mut usize) {
     }
 }
 
+pub const TYPE_STRING: u8 = 0;
+pub const TYPE_NUMBER: u8 = 1;
+pub const TYPE_BOOLEAN: u8 = 2;
+pub const TYPE_BIGINT: u8 = 3;
+
+pub(crate) fn detect_type(field: &[u8]) -> u8 {
+    if field.is_empty() {
+        return TYPE_STRING;
+    }
+    if field.eq_ignore_ascii_case(b"true") || field.eq_ignore_ascii_case(b"false") {
+        return TYPE_BOOLEAN;
+    }
+    let mut start = 0;
+    if field[0] == b'-' || field[0] == b'+' {
+        start = 1;
+    }
+    if start >= field.len() {
+        return TYPE_STRING;
+    }
+    let mut has_digit = false;
+    let mut has_dot = false;
+    for &b in &field[start..] {
+        if b.is_ascii_digit() {
+            has_digit = true;
+            continue;
+        }
+        if b == b'.' && !has_dot {
+            has_dot = true;
+            continue;
+        }
+        return TYPE_STRING;
+    }
+    if !has_digit {
+        return TYPE_STRING;
+    }
+    if !has_dot && field.len() - start > 15 {
+        return TYPE_BIGINT;
+    }
+    TYPE_NUMBER
+}
+
 pub(crate) fn trim_cr(bytes: &[u8], end: usize) -> usize {
     if end > 0 && bytes[end - 1] == b'\r' {
         end - 1

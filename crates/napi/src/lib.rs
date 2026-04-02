@@ -36,6 +36,26 @@ pub fn scan_positions(input: String, mut out: Buffer) -> u32 {
 }
 
 #[napi]
+pub fn infer_csv(input: Buffer, mut out: Buffer, has_headers: bool, max_samples: u32) -> u32 {
+    rs_csv_core::infer(&input, out.as_mut(), has_headers, max_samples as usize) as u32
+}
+
+#[napi]
+pub fn parse_with_types(
+    input: Buffer,
+    pos_buf: Buffer,
+    mut output: Buffer,
+    col_types: Buffer,
+) -> u32 {
+    rs_csv_core::parse_with_types(&input, &pos_buf, output.as_mut(), &col_types) as u32
+}
+
+#[napi]
+pub fn scan_fields_buf(input: Buffer, mut out: Buffer) -> u32 {
+    rs_csv_core::scan_fields(&input, out.as_mut()) as u32
+}
+
+#[napi]
 pub fn scan_fields_compact(mut input: Buffer, mut out: Buffer) -> u32 {
     rs_csv_core::scan_fields(&input, out.as_mut());
     rs_csv_core::compact_fields(input.as_mut(), out.as_mut()) as u32
@@ -69,6 +89,14 @@ pub fn classify_csv(
 pub fn classify_csv_buf(input: Buffer, mut cls: Buffer) -> u32 {
     rs_csv_core::classify(&input, cls.as_mut());
     input.len() as u32
+}
+
+#[napi]
+pub fn memchr_index(input: Buffer, needle: u8) -> i64 {
+    match memchr::memchr(needle, &input) {
+        Some(i) => i as i64,
+        None => -1,
+    }
 }
 
 // --- FFI cost benchmarking helpers ---
