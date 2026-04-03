@@ -1,5 +1,5 @@
 import { interpretCompact, interpretTyped } from "./interpret.js";
-import { parseFn, parseFnStr, scanFieldsCompact, scanFieldsCompactStr, scanFieldsBuf, parseWithTypes as parseWithTypesNative } from "./platform.js";
+import { parseFn, parseFnJs, scanFieldsCompact, scanFieldsCompactJs, scanFieldsJs, scanFieldsBuf, parseWithTypes as parseWithTypesNative, parseWithTypesJs as parseWithTypesJsNative, parseWithTypesJsUtf16 as parseWithTypesJsUtf16Native, scanParseWithTypesJs as scanParseWithTypesJsNative, scanParseWithTypesJsUtf16 as scanParseWithTypesJsUtf16Native } from "./platform.js";
 import type { FieldValue, Row, Converter } from "./types.js";
 import { Descriptor, Flag, readDescHeaders } from "./descriptor.js";
 import { readU32LE } from "./types.js";
@@ -7,10 +7,12 @@ import { readU32LE } from "./types.js";
 const MB = 1024 * 1024;
 const cmdBuf = Buffer.alloc(16 * MB);
 const emptyInput = new Uint8Array(0);
+const encoder = new TextEncoder();
 
 type ParseSource = {
   input: Uint8Array;
-  nativeInput: string | Buffer;
+  nativeInput: string | Uint8Array;
+  inputBuf?: Buffer;
   sliceStr: string | undefined;
   totalLength: number;
 };
@@ -78,33 +80,43 @@ function getContentBuf(): Buffer {
   return contentBuf;
 }
 
+let inputBuf: Buffer | null = null;
+function getInputBuf(size: number): Buffer {
+  if (!inputBuf || inputBuf.length < size) {
+    inputBuf = Buffer.alloc(Math.max(size, 16 * MB));
+  }
+  return inputBuf;
+}
+
 function parseQuotedRows(csv: string): string[][] {
-  if (scanFieldsCompactStr) {
+  if (scanFieldsCompactJs) {
     const cb = getContentBuf();
-    const contentLen = Number(scanFieldsCompactStr(csv, cmdBuf, cb));
+    const ib = getInputBuf(Buffer.byteLength(csv) + 1);
+    const contentLen = Number(scanFieldsCompactJs(csv, ib, cmdBuf, cb));
     const str = cb.toString('utf8', 0, contentLen);
     return interpretCompact(str, cmdBuf);
   }
-  const buf = Buffer.from(csv);
-  const contentLen = Number(scanFieldsCompact!(buf, cmdBuf));
-  const str = buf.toString('utf8', 0, contentLen);
+  const input = encoder.encode(csv);
+  const contentLen = Number(scanFieldsCompact!(input, cmdBuf));
+  const str = new TextDecoder().decode(input.subarray(0, contentLen));
   return interpretCompact(str, cmdBuf);
 }
 
 function prepareParseSource(csv: string): ParseSource {
-  if (parseFnStr) {
+  if (parseFnJs) {
     const byteLength = Buffer.byteLength(csv);
     if (byteLength === csv.length) {
       return {
         input: emptyInput,
         nativeInput: csv,
+        inputBuf: getInputBuf(byteLength + 1),
         sliceStr: csv,
         totalLength: byteLength,
       };
     }
   }
 
-  const input = Buffer.from(csv);
+  const input = encoder.encode(csv);
   return {
     input,
     nativeInput: input,
@@ -115,7 +127,7 @@ function prepareParseSource(csv: string): ParseSource {
 
 function callRustParse(source: ParseSource, offset: number, typed: boolean, strRow: boolean): number {
   if (typeof source.nativeInput === "string") {
-    return Number(parseFnStr!(source.nativeInput, cmdBuf, offset, typed, strRow));
+    return Number(parseFnJs!(source.nativeInput, source.inputBuf!, cmdBuf, offset, typed, strRow));
   }
   return Number(parseFn(source.nativeInput, cmdBuf, offset, typed, strRow));
 }
@@ -219,12 +231,30 @@ function parseWithDescriptor(csv: string, desc: Uint8Array, opts?: ParseOptions)
   const autotyped = type === true;
 
   if (autotyped && !userSchema) {
-    const buf = Buffer.from(csv);
     const pb = getPosBuf();
-    scanFieldsBuf!(buf, pb);
-    const typesArr = Buffer.from(desc.subarray(8, 8 + width));
-    parseWithTypesNative(buf, pb, cmdBuf, typesArr);
-    const rows = interpretTyped(buf, cmdBuf, csv);
+    const typesView = desc.subarray(8, 8 + width);
+    const hasNonAscii = (flags & Flag.HAS_NON_ASCII) !== 0;
+    const needsUtf8Measure = hasNonAscii || (flags & Flag.HAS_BOM) !== 0;
+    if (hasNonAscii && scanParseWithTypesJsUtf16Native) {
+      const ib = getInputBuf((needsUtf8Measure ? Buffer.byteLength(csv) : csv.length) + 1);
+      scanParseWithTypesJsUtf16Native(csv, ib, pb, cmdBuf, typesView);
+    } else if (!hasNonAscii && scanParseWithTypesJsNative) {
+      const ib = getInputBuf((needsUtf8Measure ? Buffer.byteLength(csv) : csv.length) + 1);
+      scanParseWithTypesJsNative(csv, ib, pb, cmdBuf, typesView);
+    } else if (hasNonAscii && scanFieldsJs && parseWithTypesJsUtf16Native) {
+      const ib = getInputBuf(Buffer.byteLength(csv) + 1);
+      scanFieldsJs(csv, ib, pb);
+      parseWithTypesJsUtf16Native(csv, ib, pb, cmdBuf, typesView);
+    } else if (!hasNonAscii && scanFieldsJs && parseWithTypesJsNative) {
+      const ib = getInputBuf(csv.length + 1);
+      scanFieldsJs(csv, ib, pb);
+      parseWithTypesJsNative(csv, ib, pb, cmdBuf, typesView);
+    } else {
+      const buf = encoder.encode(csv);
+      scanFieldsBuf!(buf, pb);
+      parseWithTypesNative(buf, pb, cmdBuf, typesView);
+    }
+    const rows = interpretTyped(emptyInput, cmdBuf, csv);
 
     if (descHeaders) {
       const startIdx = wantHeaders ? 1 : 0;

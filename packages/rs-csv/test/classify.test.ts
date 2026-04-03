@@ -13,6 +13,7 @@ const CLS_HAS_ESCAPES   = 1 << 1;
 const CLS_HAS_QUOTED_NL = 1 << 2;
 const CLS_HAS_CRLF      = 1 << 3;
 const CLS_HAS_BOM       = 1 << 4;
+const CLS_HAS_NON_ASCII = 1 << 5;
 
 const clsBuf = Buffer.alloc(16);
 const inputBuf = Buffer.alloc(1024);
@@ -105,6 +106,11 @@ describe("classify string", () => {
     const r = classify("");
     assert.equal(r.rows, 0);
     assert.equal(r.fields, 0);
+  });
+
+  test("detects non-ascii", () => {
+    const r = classify("name\nAndr\u00e9");
+    assert.equal(r.flags & CLS_HAS_NON_ASCII, CLS_HAS_NON_ASCII);
   });
 });
 

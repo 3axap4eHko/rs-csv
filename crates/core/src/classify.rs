@@ -5,6 +5,7 @@ pub const CLS_HAS_ESCAPES: u32 = 1 << 1;
 pub const CLS_HAS_QUOTED_NL: u32 = 1 << 2;
 pub const CLS_HAS_CRLF: u32 = 1 << 3;
 pub const CLS_HAS_BOM: u32 = 1 << 4;
+pub const CLS_HAS_NON_ASCII: u32 = 1 << 5;
 
 pub const CLS_BUF_SIZE: usize = 16;
 
@@ -35,6 +36,9 @@ pub fn classify(input: &[u8], out: &mut [u8]) {
 pub fn classify_input(input: &[u8]) -> ClassifyResult {
     let bom = skip_bom(input);
     let mut flags: u32 = if bom > 0 { CLS_HAS_BOM } else { 0 };
+    if !input[bom..].is_ascii() {
+        flags |= CLS_HAS_NON_ASCII;
+    }
 
     if memchr::memchr(b'"', &input[bom..]).is_none() {
         return classify_unquoted(input, bom, flags);

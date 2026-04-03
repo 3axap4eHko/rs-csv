@@ -2,7 +2,7 @@
   "private": true,
   "scripts": {
     "build:napi": "cd crates/napi && RUSTFLAGS=\"-C target-cpu=native\" ./node_modules/.bin/napi build --release",
-    "build:wasm": "RUSTFLAGS=\"-C target-feature=+simd128\" wasm-pack build crates/wasm --target nodejs --release && echo 'exports.memory = wasm.memory;' >> crates/wasm/pkg/rs_csv_wasm.js",
+    "build:wasm": "RUSTFLAGS=\"-C target-feature=+simd128\" wasm-pack build crates/wasm --target nodejs --release && bun run crates/wasm/patch-pkg.mjs",
     "build": "pnpm run build:napi && pnpm run build:wasm",
     "lint": "oxlint packages/rs-csv/src/ && cargo clippy --workspace",
     "fmt": "cargo fmt --all",
@@ -18,7 +18,7 @@
     "csv-rex": "^0.7.0",
     "d3-dsv": "^3.0.1",
     "fast-csv": "^5.0.5",
-    "overtake": "^2.1.0",
+    "overtake": "^2.1.1",
     "oxlint": "^1.58.0",
     "papaparse": "^5.5.3",
     "udsv": "^0.7.3"

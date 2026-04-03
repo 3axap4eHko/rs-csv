@@ -8,12 +8,12 @@ mod scan_positions;
 mod shared;
 
 pub use classify::{
-    CLS_BUF_SIZE, CLS_HAS_BOM, CLS_HAS_CRLF, CLS_HAS_ESCAPES, CLS_HAS_QUOTED_NL, CLS_HAS_QUOTES,
-    ClassifyResult, classify, classify_input,
+    CLS_BUF_SIZE, CLS_HAS_BOM, CLS_HAS_CRLF, CLS_HAS_ESCAPES, CLS_HAS_NON_ASCII, CLS_HAS_QUOTED_NL,
+    CLS_HAS_QUOTES, ClassifyResult, classify, classify_input,
 };
 
 pub use infer::infer;
-pub use parse_typed::parse_with_types;
+pub use parse_typed::{parse_with_types, parse_with_types_utf16};
 pub use scan_positions::{compact_fields, scan_fields, scan_positions};
 pub use shared::{TYPE_BIGINT, TYPE_BOOLEAN, TYPE_NUMBER, TYPE_STRING};
 

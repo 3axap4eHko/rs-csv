@@ -203,6 +203,7 @@ dependencies = [
 name = "rs-csv-wasm"
 version = "0.1.0"
 dependencies = [
+ "memchr",
  "rs-csv-core",
  "wasm-bindgen",
 ]

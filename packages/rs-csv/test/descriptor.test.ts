@@ -38,6 +38,11 @@ describe("infer", () => {
     expect(desc.flags & Flag.HAS_BOM).not.toBe(0);
   });
 
+  test("detects flags: non-ascii", () => {
+    const desc = infer("name\nAndr\u00e9");
+    expect(desc.flags & Flag.HAS_NON_ASCII).not.toBe(0);
+  });
+
   test("infers number type", () => {
     const desc = infer("val\n42\n3.14\n-1", { headers: true });
     expect(desc.types[0]).toBe(Type.Number);

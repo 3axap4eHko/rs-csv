@@ -7,5 +7,6 @@ edition.workspace = true
 crate-type = ["cdylib"]
 
 [dependencies]
+memchr.workspace = true
 rs-csv-core = { path = "../core" }
 wasm-bindgen = "0.2"

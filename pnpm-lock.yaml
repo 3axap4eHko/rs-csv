@@ -24,8 +24,8 @@ importers:
         specifier: ^5.0.5
         version: 5.0.5
       overtake:
-        specifier: ^2.1.0
-        version: 2.1.0
+        specifier: ^2.1.1
+        version: 2.1.1
       oxlint:
         specifier: ^1.58.0
         version: 1.58.0
@@ -949,8 +949,8 @@ packages:
   obug@2.1.1:
     resolution: {integrity: sha512-uTqF9MuPraAQ+IsnPf366RG4cP9RtUi7MLO1N3KEc+wb0a6yKpeL0lmk2IB1jY5KHPAlTc6T/JRdC/YqxHNwkQ==}
 
-  overtake@2.1.0:
-    resolution: {integrity: sha512-qiDh+NvYlQhvZG2ELE1dI+NIHDp5Vl9OP/8gBwOsG2Lfeqp15A4IAxcgxuUjP0gYrZmMfdmToe+SfLIKU3+g3g==}
+  overtake@2.1.1:
+    resolution: {integrity: sha512-3zMIQSlTeGBg8qKmDIGdzxyKWptOkYQKG1cnB+whqKX8pGL/3nDjQE7/Z00zWKhMNRYXJjEgt9g7nXYm/+pHHA==}
     engines: {node: '>=22'}
     hasBin: true
 
@@ -1707,7 +1707,7 @@ snapshots:
 
   obug@2.1.1: {}
 
-  overtake@2.1.0:
+  overtake@2.1.1:
     dependencies:
       '@swc/core': 1.15.21
       progress: 2.0.3

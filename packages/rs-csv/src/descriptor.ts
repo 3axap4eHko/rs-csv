@@ -1,4 +1,4 @@
-import { inferCsv, inferCsvStr } from "./platform.js";
+import { inferCsv, inferCsvJs } from "./platform.js";
 import { readU32LE, writeU32LE } from "./types.js";
 
 export enum Type {
@@ -14,6 +14,7 @@ export const Flag = {
   HAS_QUOTED_NL: 1 << 2,
   HAS_CRLF:      1 << 3,
   HAS_BOM:       1 << 4,
+  HAS_NON_ASCII: 1 << 5,
 } as const;
 
 // Binary layout:
@@ -26,6 +27,7 @@ export const Flag = {
 const FLAGS_OFF = 0;
 const WIDTH_OFF = 4;
 const TYPES_OFF = 8;
+const encoder = new TextEncoder();
 
 
 export class Descriptor extends Uint8Array {
@@ -72,6 +74,14 @@ function getInferBuf(): Buffer {
   return inferBuf;
 }
 
+let inputBuf: Buffer | null = null;
+function getInputBuf(size: number): Buffer {
+  if (!inputBuf || inputBuf.length < size) {
+    inputBuf = Buffer.alloc(Math.max(size, 64 * 1024));
+  }
+  return inputBuf;
+}
+
 export function infer(csv: string | string[], opts?: InferOptions): Descriptor {
   const userHeaders = opts?.headers;
   const userTypes = opts?.types;
@@ -85,9 +95,14 @@ export function infer(csv: string | string[], opts?: InferOptions): Descriptor {
   const hasHeaderRow = userHeaders === true;
 
   const ib = getInferBuf();
-  const callInfer = inferCsvStr
-    ? (csv: string) => inferCsvStr(csv, ib, hasHeaderRow, samples)
-    : (csv: string) => inferCsv(Buffer.from(csv), ib, hasHeaderRow, samples);
+  const inferCsvJsNative = inferCsvJs;
+  const callInfer = (csv: string) => {
+    if (inferCsvJsNative) {
+      const input = getInputBuf(Buffer.byteLength(csv) + 1);
+      return inferCsvJsNative(csv, input, ib, hasHeaderRow, samples);
+    }
+    return inferCsv(encoder.encode(csv), ib, hasHeaderRow, samples);
+  };
 
   callInfer(csvs[0]);
 

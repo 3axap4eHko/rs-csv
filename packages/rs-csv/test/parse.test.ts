@@ -1,4 +1,5 @@
 import { describe, test, expect } from "bun:test";
+import { infer } from "../src/descriptor.ts";
 import { parse } from "../src/parse.ts";
 
 describe("basic parsing (default = raw strings)", () => {
@@ -205,6 +206,22 @@ describe("unicode strings", () => {
     expect(rows[0]).toEqual(expectedRow);
     expect(rows.at(-1)).toEqual(expectedRow);
   }, 10000);
+
+  test("descriptor autotyped path preserves astral strings without trailing newline", () => {
+    const csv = "name\n\u{1F600}";
+    const desc = infer(csv, { headers: true });
+    expect(parse(csv, { type: true, headers: true, descriptor: desc })).toEqual([
+      { name: "\u{1F600}" },
+    ]);
+  });
+
+  test("descriptor autotyped path preserves escaped and empty quoted strings", () => {
+    const csv = 'name,quote,empty\nAlice,"he said ""hi""",""';
+    const desc = infer(csv, { headers: true });
+    expect(parse(csv, { type: true, headers: true, descriptor: desc })).toEqual([
+      { name: "Alice", quote: 'he said "hi"', empty: "" },
+    ]);
+  });
 });
 
 describe("line endings", () => {
