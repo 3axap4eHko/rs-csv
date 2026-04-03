@@ -1,5 +1,5 @@
 import { interpretCompact, interpretTyped } from "./interpret.js";
-import { parseFn, parseFnStr, scanFieldsCompact, scanFieldsBuf, parseWithTypes as parseWithTypesNative } from "./platform.js";
+import { parseFn, parseFnStr, scanFieldsCompact, scanFieldsCompactStr, scanFieldsBuf, parseWithTypes as parseWithTypesNative } from "./platform.js";
 import type { FieldValue, Row, Converter } from "./types.js";
 import { Descriptor, Flag, readDescHeaders } from "./descriptor.js";
 import { readU32LE } from "./types.js";
@@ -72,7 +72,19 @@ function parseUnquotedJS(csv: string, knownWidth?: number): string[][] {
   return rows;
 }
 
+let contentBuf: Buffer | null = null;
+function getContentBuf(): Buffer {
+  if (!contentBuf) {contentBuf = Buffer.alloc(16 * MB);}
+  return contentBuf;
+}
+
 function parseQuotedRows(csv: string): string[][] {
+  if (scanFieldsCompactStr) {
+    const cb = getContentBuf();
+    const contentLen = Number(scanFieldsCompactStr(csv, cmdBuf, cb));
+    const str = cb.toString('utf8', 0, contentLen);
+    return interpretCompact(str, cmdBuf);
+  }
   const buf = Buffer.from(csv);
   const contentLen = Number(scanFieldsCompact!(buf, cmdBuf));
   const str = buf.toString('utf8', 0, contentLen);

@@ -1,4 +1,4 @@
-import { inferCsv } from "./platform.js";
+import { inferCsv, inferCsvStr } from "./platform.js";
 import { readU32LE, writeU32LE } from "./types.js";
 
 export enum Type {
@@ -85,10 +85,11 @@ export function infer(csv: string | string[], opts?: InferOptions): Descriptor {
   const hasHeaderRow = userHeaders === true;
 
   const ib = getInferBuf();
+  const callInfer = inferCsvStr
+    ? (csv: string) => inferCsvStr(csv, ib, hasHeaderRow, samples)
+    : (csv: string) => inferCsv(Buffer.from(csv), ib, hasHeaderRow, samples);
 
-  // First CSV: full Rust infer (classify + types + headers)
-  const firstBuf = Buffer.from(csvs[0]);
-  inferCsv(firstBuf, ib, hasHeaderRow, samples);
+  callInfer(csvs[0]);
 
   let flags = readU32LE(ib, FLAGS_OFF);
   let width = readU32LE(ib, WIDTH_OFF);
@@ -96,8 +97,7 @@ export function infer(csv: string | string[], opts?: InferOptions): Descriptor {
   for (let i = 0; i < width; i++) { types[i] = ib[TYPES_OFF + i]; }
 
   for (let ci = 1; ci < csvs.length; ci++) {
-    const buf = Buffer.from(csvs[ci]);
-    inferCsv(buf, ib, hasHeaderRow, samples);
+    callInfer(csvs[ci]);
     flags |= readU32LE(ib, FLAGS_OFF);
     const w = readU32LE(ib, WIDTH_OFF);
     if (w > width) { width = w; }
@@ -112,7 +112,7 @@ export function infer(csv: string | string[], opts?: InferOptions): Descriptor {
   }
 
   if (csvs.length > 1) {
-    inferCsv(firstBuf, ib, hasHeaderRow, samples);
+    callInfer(csvs[0]);
   }
 
   const firstWidth = readU32LE(ib, WIDTH_OFF);

@@ -41,6 +41,16 @@ pub fn infer_csv(input: Buffer, mut out: Buffer, has_headers: bool, max_samples:
 }
 
 #[napi]
+pub fn infer_csv_str(input: String, mut out: Buffer, has_headers: bool, max_samples: u32) -> u32 {
+    rs_csv_core::infer(
+        input.as_bytes(),
+        out.as_mut(),
+        has_headers,
+        max_samples as usize,
+    ) as u32
+}
+
+#[napi]
 pub fn parse_with_types(
     input: Buffer,
     pos_buf: Buffer,
@@ -59,6 +69,15 @@ pub fn scan_fields_buf(input: Buffer, mut out: Buffer) -> u32 {
 pub fn scan_fields_compact(mut input: Buffer, mut out: Buffer) -> u32 {
     rs_csv_core::scan_fields(&input, out.as_mut());
     rs_csv_core::compact_fields(input.as_mut(), out.as_mut()) as u32
+}
+
+#[napi]
+pub fn scan_fields_compact_str(input: String, mut out: Buffer, mut content: Buffer) -> u32 {
+    let mut bytes = input.into_bytes();
+    rs_csv_core::scan_fields(&bytes, out.as_mut());
+    let len = rs_csv_core::compact_fields(&mut bytes, out.as_mut());
+    content[..len].copy_from_slice(&bytes[..len]);
+    len as u32
 }
 
 #[napi]
