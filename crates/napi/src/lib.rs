@@ -1,5 +1,5 @@
 use napi::bindgen_prelude::*;
-use napi::{JsString, NapiRaw};
+use napi::JsString;
 use napi_derive::napi;
 
 fn read_js_string_utf8(env: Env, input: JsString, buf: &mut Buffer) -> Result<usize> {

@@ -9,8 +9,8 @@ crate-type = ["cdylib"]
 [dependencies]
 rs-csv-core = { path = "../core" }
 memchr = { workspace = true }
-napi = { version = "2", features = ["napi8"] }
-napi-derive = "2"
+napi = { version = "3", features = ["napi8", "compat-mode"] }
+napi-derive = { version = "3", features = ["compat-mode"] }
 
 [build-dependencies]
 napi-build = "2"

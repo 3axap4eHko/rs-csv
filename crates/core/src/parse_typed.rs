@@ -127,15 +127,13 @@ fn parse_with_types_inner<M: OffsetMode>(
 
         if is_quoted || col_type == TYPE_STRING {
             let field_offset = offsets.field_offset(is_quoted);
-            write_string_field::<M>(
-                field_slice,
-                output,
-                &mut wp,
-                &offsets,
-                field_offset,
-                is_last,
-                is_escaped,
-            );
+            if is_escaped {
+                write_escaped_field::<M>(
+                    field_slice, output, &mut wp, &offsets, field_offset, is_last,
+                );
+            } else {
+                write_op(output, &mut wp, OP_STR, field_offset, offsets.slice_len(field_slice), is_last);
+            }
         } else if field_slice.is_empty() {
             write_null(output, &mut wp, is_last);
         } else {
@@ -147,15 +145,7 @@ fn parse_with_types_inner<M: OffsetMode>(
                         wp += 9;
                     } else {
                         let field_offset = offsets.field_offset(false);
-                        write_string_field::<M>(
-                            field_slice,
-                            output,
-                            &mut wp,
-                            &offsets,
-                            field_offset,
-                            is_last,
-                            false,
-                        );
+                        write_op(output, &mut wp, OP_STR, field_offset, offsets.slice_len(field_slice), is_last);
                     }
                 }
                 TYPE_BOOLEAN => {
@@ -174,15 +164,7 @@ fn parse_with_types_inner<M: OffsetMode>(
                 }
                 _ => {
                     let field_offset = offsets.field_offset(false);
-                    write_string_field::<M>(
-                        field_slice,
-                        output,
-                        &mut wp,
-                        &offsets,
-                        field_offset,
-                        is_last,
-                        false,
-                    );
+                    write_op(output, &mut wp, OP_STR, field_offset, offsets.slice_len(field_slice), is_last);
                 }
             }
         }
@@ -213,27 +195,14 @@ fn write_null(buf: &mut [u8], wp: &mut usize, is_last: bool) {
     *wp += 9;
 }
 
-fn write_string_field<M: OffsetMode>(
+fn write_escaped_field<M: OffsetMode>(
     field_slice: &[u8],
     output: &mut [u8],
     wp: &mut usize,
     offsets: &M,
     field_offset: usize,
     is_last: bool,
-    is_escaped: bool,
 ) {
-    if !is_escaped {
-        write_op(
-            output,
-            wp,
-            OP_STR,
-            field_offset,
-            offsets.slice_len(field_slice),
-            is_last,
-        );
-        return;
-    }
-
     let mut seg_offset = field_offset;
     let mut search_from = 0usize;
     let mut first = true;
