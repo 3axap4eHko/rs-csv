@@ -1,26 +1,56 @@
-import { interpretCompact, interpretTyped } from "./interpret.js";
-import { parseFn, parseFnJs, scanFieldsCompact, scanFieldsCompactJs, scanFieldsJs, scanFieldsBuf, parseWithTypes as parseWithTypesNative, parseWithTypesJs as parseWithTypesJsNative, parseWithTypesJsUtf16 as parseWithTypesJsUtf16Native, scanParseWithTypesJs as scanParseWithTypesJsNative, scanParseWithTypesJsUtf16 as scanParseWithTypesJsUtf16Native } from "./platform.js";
+import { interpretAligned, interpretCompact } from "./interpret.js";
+import { fusedTypedParseJs as fusedTypedParseJsNative, scanFieldsCompact, scanFieldsCompactJs } from "./platform.js";
 import type { FieldValue, Row, Converter } from "./types.js";
-import { Descriptor, Flag, readDescHeaders } from "./descriptor.js";
+import { Descriptor, infer, readDescHeaderCount, readDescHeaders } from "./descriptor.js";
 import { readU32LE } from "./types.js";
 
 const MB = 1024 * 1024;
-const cmdBuf = Buffer.alloc(16 * MB);
-const emptyInput = new Uint8Array(0);
 const encoder = new TextEncoder();
-
-type ParseSource = {
-  input: Uint8Array;
-  nativeInput: string | Uint8Array;
-  inputBuf?: Buffer;
-  sliceStr: string | undefined;
-  totalLength: number;
-};
 
 export interface ParseOptions {
   type?: boolean | Converter[];
   headers?: boolean;
   descriptor?: Descriptor | Uint8Array;
+}
+
+let inputBuf: Buffer | null = null;
+function getInputBuf(size: number): Buffer {
+  if (!inputBuf || inputBuf.length < size) {
+    inputBuf = Buffer.alloc(Math.max(size, 16 * MB));
+  }
+  return inputBuf;
+}
+
+let contentBuf: Buffer | null = null;
+function getContentBuf(size: number): Buffer {
+  if (!contentBuf || contentBuf.length < size) {
+    contentBuf = Buffer.alloc(Math.max(size, 16 * MB));
+  }
+  return contentBuf;
+}
+
+let posBuf: Buffer | null = null;
+function getPosBuf(size: number): Buffer {
+  if (!posBuf || posBuf.length < size) {
+    posBuf = Buffer.alloc(Math.max(size, 16 * MB));
+  }
+  return posBuf;
+}
+
+let alignedBuf: Buffer | null = null;
+function getAlignedBuf(size: number): Buffer {
+  if (!alignedBuf || alignedBuf.length < size) {
+    alignedBuf = Buffer.alloc(Math.max(size, 16 * MB));
+  }
+  return alignedBuf;
+}
+
+let sideBuf: Buffer | null = null;
+function getSideBuf(size: number): Buffer {
+  if (!sideBuf || sideBuf.length < size) {
+    sideBuf = Buffer.alloc(Math.max(size, 4 * MB));
+  }
+  return sideBuf;
 }
 
 function parseUnquotedJS(csv: string, knownWidth?: number): string[][] {
@@ -31,7 +61,7 @@ function parseUnquotedJS(csv: string, knownWidth?: number): string[][] {
   if (knownWidth != null) {
     width = knownWidth;
   } else {
-    const firstNl = csv.indexOf('\n', start);
+    const firstNl = csv.indexOf("\n", start);
     width = 1;
     const scanEnd = firstNl === -1 ? csv.length : firstNl;
     for (let i = start; i < scanEnd; i++) {
@@ -50,7 +80,7 @@ function parseUnquotedJS(csv: string, knownWidth?: number): string[][] {
 
     const row: string[] = new Array(width);
     for (let c = 0; c < lastCol; c++) {
-      const next = csv.indexOf(',', pos);
+      const next = csv.indexOf(",", pos);
       if (next === -1) {
         row[c] = csv.slice(pos);
         rows.push(row);
@@ -59,7 +89,7 @@ function parseUnquotedJS(csv: string, knownWidth?: number): string[][] {
       row[c] = csv.slice(pos, next);
       pos = next + 1;
     }
-    const next = csv.indexOf('\n', pos);
+    const next = csv.indexOf("\n", pos);
     if (next === -1) {
       row[lastCol] = csv.slice(pos);
       rows.push(row);
@@ -74,119 +104,102 @@ function parseUnquotedJS(csv: string, knownWidth?: number): string[][] {
   return rows;
 }
 
-let contentBuf: Buffer | null = null;
-function getContentBuf(): Buffer {
-  if (!contentBuf) {contentBuf = Buffer.alloc(16 * MB);}
-  return contentBuf;
-}
-
-let inputBuf: Buffer | null = null;
-function getInputBuf(size: number): Buffer {
-  if (!inputBuf || inputBuf.length < size) {
-    inputBuf = Buffer.alloc(Math.max(size, 16 * MB));
-  }
-  return inputBuf;
-}
-
 function parseQuotedRows(csv: string): string[][] {
+  const byteLength = Buffer.byteLength(csv);
+  const positions = getPosBuf(16 + byteLength * 4 + 64);
   if (scanFieldsCompactJs) {
-    const cb = getContentBuf();
-    const ib = getInputBuf(Buffer.byteLength(csv) + 1);
-    const contentLen = Number(scanFieldsCompactJs(csv, ib, cmdBuf, cb));
-    const str = cb.toString('utf8', 0, contentLen);
-    return interpretCompact(str, cmdBuf);
+    const content = getContentBuf(byteLength + 1);
+    const input = getInputBuf(byteLength + 1);
+    const contentLen = Number(scanFieldsCompactJs(csv, input, positions, content));
+    const str = content.toString("utf8", 0, contentLen);
+    return interpretCompact(str, positions);
   }
   const input = encoder.encode(csv);
-  const contentLen = Number(scanFieldsCompact!(input, cmdBuf));
+  const contentLen = Number(scanFieldsCompact!(input, positions));
   const str = new TextDecoder().decode(input.subarray(0, contentLen));
-  return interpretCompact(str, cmdBuf);
+  return interpretCompact(str, positions);
 }
 
-function prepareParseSource(csv: string): ParseSource {
-  if (parseFnJs) {
-    const byteLength = Buffer.byteLength(csv);
-    if (byteLength === csv.length) {
-      return {
-        input: emptyInput,
-        nativeInput: csv,
-        inputBuf: getInputBuf(byteLength + 1),
-        sliceStr: csv,
-        totalLength: byteLength,
-      };
+function parseHeaderRow(csv: string, hasQuotes: boolean): string[] {
+  return hasQuotes ? parseQuotedHeaderRow(csv) : parseUnquotedHeaderRow(csv);
+}
+
+function parseUnquotedHeaderRow(csv: string): string[] {
+  let pos = 0;
+  if (csv.charCodeAt(0) === 0xFEFF) {pos = 1;}
+
+  const headers: string[] = [];
+  while (pos <= csv.length) {
+    const nextComma = csv.indexOf(",", pos);
+    const nextNl = csv.indexOf("\n", pos);
+    if (nextNl === -1 && nextComma === -1) {
+      headers.push(csv.slice(pos));
+      return headers;
     }
+    if (nextComma !== -1 && (nextNl === -1 || nextComma < nextNl)) {
+      headers.push(csv.slice(pos, nextComma));
+      pos = nextComma + 1;
+      continue;
+    }
+    const end = nextNl > 0 && csv.charCodeAt(nextNl - 1) === 13 ? nextNl - 1 : nextNl;
+    headers.push(csv.slice(pos, end));
+    return headers;
   }
-
-  const input = encoder.encode(csv);
-  return {
-    input,
-    nativeInput: input,
-    sliceStr: undefined,
-    totalLength: input.length,
-  };
+  return headers;
 }
 
-function callRustParse(source: ParseSource, offset: number, typed: boolean, strRow: boolean): number {
-  if (typeof source.nativeInput === "string") {
-    return Number(parseFnJs!(source.nativeInput, source.inputBuf!, cmdBuf, offset, typed, strRow));
+function parseQuotedHeaderRow(csv: string): string[] {
+  let pos = 0;
+  if (csv.charCodeAt(0) === 0xFEFF) {pos = 1;}
+
+  const headers: string[] = [];
+  let field = "";
+  let inQuotes = false;
+
+  while (pos < csv.length) {
+    const ch = csv.charCodeAt(pos);
+    if (inQuotes) {
+      if (ch === 34) {
+        if (pos + 1 < csv.length && csv.charCodeAt(pos + 1) === 34) {
+          field += "\"";
+          pos += 2;
+        } else {
+          inQuotes = false;
+          pos += 1;
+        }
+        continue;
+      }
+      field += csv[pos];
+      pos += 1;
+      continue;
+    }
+
+    if (ch === 34) { inQuotes = true; pos += 1; continue; }
+    if (ch === 44) { headers.push(field); field = ""; pos += 1; continue; }
+    if (ch === 10) {
+      if (field.endsWith("\r")) {field = field.slice(0, -1);}
+      headers.push(field);
+      return headers;
+    }
+    field += csv[pos];
+    pos += 1;
   }
-  return Number(parseFn(source.nativeInput, cmdBuf, offset, typed, strRow));
+
+  headers.push(field);
+  return headers;
 }
 
-function parseAutotypedRows(csv: string): Row[] {
-  const source = prepareParseSource(csv);
-  const consumed = callRustParse(source, 0, true, false);
-  if (consumed === 0) {return [];}
-
-  const rows = interpretTyped(source.input, cmdBuf, source.sliceStr);
-  if (consumed === source.totalLength) {return rows;}
-
-  let wi = rows.length;
-  for (let offset = consumed; offset < source.totalLength;) {
-    const used = callRustParse(source, offset, true, false);
-    if (used === 0) {break;}
-    const chunk = interpretTyped(source.input, cmdBuf, source.sliceStr);
-    for (let i = 0; i < chunk.length; i++) { rows[wi++] = chunk[i]; }
-    offset += used;
-  }
-
-  return rows;
-}
-
-function parseAutotypedWithHeaders(csv: string): Record<string, FieldValue>[] {
-  const source = prepareParseSource(csv);
-  const consumed = callRustParse(source, 0, true, true);
-  if (consumed === 0) {return [];}
-
-  const firstChunk = interpretTyped(source.input, cmdBuf, source.sliceStr);
-  if (firstChunk.length === 0) {return [];}
-
-  const headers = firstChunk[0].map(String);
-  const rows: Record<string, FieldValue>[] = new Array(firstChunk.length - 1);
-
-  for (let i = 1; i < firstChunk.length; i++) {
+function toObjects(headers: string[], rows: Row[], startIdx: number): Record<string, FieldValue>[] {
+  const out: Record<string, FieldValue>[] = new Array(rows.length - startIdx);
+  for (let i = startIdx; i < rows.length; i++) {
     const obj: Record<string, FieldValue> = {};
-    for (let j = 0; j < headers.length; j++) {obj[headers[j]] = firstChunk[i][j];}
-    rows[i - 1] = obj;
+    for (let j = 0; j < headers.length; j++) {obj[headers[j]] = rows[i][j];}
+    out[i - startIdx] = obj;
   }
-
-  let wi = rows.length;
-  for (let offset = consumed; offset < source.totalLength;) {
-    const used = callRustParse(source, offset, true, false);
-    if (used === 0) {break;}
-    const chunk = interpretTyped(source.input, cmdBuf, source.sliceStr);
-    for (let i = 0; i < chunk.length; i++) {
-      const row = chunk[i];
-      const obj: Record<string, FieldValue> = {};
-      for (let j = 0; j < headers.length; j++) {obj[headers[j]] = row[j];}
-      rows[wi++] = obj;
-    }
-    offset += used;
-  }
-
-  return rows;
+  return out;
 }
 
-function rowsToObjects(headers: string[], rows: string[][], schema?: Converter[]): Record<string, unknown>[] {
+function toObjectsStr(headers: string[], rows: string[][], schema?: Converter[]): Record<string, unknown>[] {
   const out: Record<string, unknown>[] = new Array(rows.length);
   for (let i = 0; i < rows.length; i++) {
     const obj: Record<string, unknown> = {};
@@ -213,109 +226,87 @@ function applySchema(rawRows: string[][], schema: Converter[]): unknown[][] {
   return out;
 }
 
-let posBuf: Buffer | null = null;
-function getPosBuf(): Buffer {
-  if (!posBuf) {posBuf = Buffer.alloc(16 * MB);}
-  return posBuf;
+function descriptorBuffer(descriptor: Uint8Array): Buffer {
+  if (descriptor instanceof Buffer) {return descriptor;}
+  return Buffer.from(descriptor.buffer, descriptor.byteOffset, descriptor.byteLength);
 }
 
-function parseWithDescriptor(csv: string, desc: Uint8Array, opts?: ParseOptions): unknown[] {
+function parseTypedAligned(csv: string, descriptor: Uint8Array, skipHeaderRow: boolean): Row[] {
+  const byteLength = Buffer.byteLength(csv);
+  const input = getInputBuf(byteLength + 1);
+  const positions = getPosBuf(16 + byteLength * 4 + 64);
+  const descBuf = descriptorBuffer(descriptor);
+
+  let output = getAlignedBuf(byteLength * 4 + 256);
+  let side = getSideBuf(byteLength + 256);
+
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const written = Number(
+      fusedTypedParseJsNative!(csv, input, positions, output, side, descBuf, skipHeaderRow, 100),
+    );
+    if (written > 0) {
+      return interpretAligned(csv, output.subarray(0, written), side);
+    }
+    output = getAlignedBuf(output.length * 2);
+    side = getSideBuf(side.length * 2);
+  }
+
+  throw new Error("typed parse scratch buffers exhausted");
+}
+
+function getHeaders(csv: string, descriptor: Uint8Array | undefined, descriptorProvided: boolean, wantHeaders: boolean): string[] {
+  if (wantHeaders) {
+    const firstNl = csv.indexOf("\n");
+    const headerLine = firstNl === -1 ? csv : csv.slice(0, firstNl);
+    return parseHeaderRow(csv, headerLine.includes("\""));
+  }
+  if (descriptor) {
+    const width = readU32LE(descriptor, 4);
+    if (readDescHeaderCount(descriptor, width) > 0) {
+      return readDescHeaders(descriptor, width);
+    }
+  }
+  return [];
+}
+
+export function parse(csv: string, opts?: ParseOptions): unknown[] {
   const type = opts?.type;
   const wantHeaders = opts?.headers === true;
-  const userSchema = Array.isArray(type) ? type : undefined;
-  const flags = readU32LE(desc, 0);
-  const width = readU32LE(desc, 4);
-  const hasQuotes = (flags & Flag.HAS_QUOTES) !== 0;
-  const descHeaders = wantHeaders ? readDescHeaders(desc, width) : null;
-
+  const schema = Array.isArray(type) ? type : undefined;
   const autotyped = type === true;
+  const descriptorProvided = opts?.descriptor != null;
+  let descriptor = opts?.descriptor;
 
-  if (autotyped && !userSchema) {
-    const pb = getPosBuf();
-    const typesView = desc.subarray(8, 8 + width);
-    const hasNonAscii = (flags & Flag.HAS_NON_ASCII) !== 0;
-    const needsUtf8Measure = hasNonAscii || (flags & Flag.HAS_BOM) !== 0;
-    if (hasNonAscii && scanParseWithTypesJsUtf16Native) {
-      const ib = getInputBuf((needsUtf8Measure ? Buffer.byteLength(csv) : csv.length) + 1);
-      scanParseWithTypesJsUtf16Native(csv, ib, pb, cmdBuf, typesView);
-    } else if (!hasNonAscii && scanParseWithTypesJsNative) {
-      const ib = getInputBuf((needsUtf8Measure ? Buffer.byteLength(csv) : csv.length) + 1);
-      scanParseWithTypesJsNative(csv, ib, pb, cmdBuf, typesView);
-    } else if (hasNonAscii && scanFieldsJs && parseWithTypesJsUtf16Native) {
-      const ib = getInputBuf(Buffer.byteLength(csv) + 1);
-      scanFieldsJs(csv, ib, pb);
-      parseWithTypesJsUtf16Native(csv, ib, pb, cmdBuf, typesView);
-    } else if (!hasNonAscii && scanFieldsJs && parseWithTypesJsNative) {
-      const ib = getInputBuf(csv.length + 1);
-      scanFieldsJs(csv, ib, pb);
-      parseWithTypesJsNative(csv, ib, pb, cmdBuf, typesView);
-    } else {
-      const buf = encoder.encode(csv);
-      scanFieldsBuf!(buf, pb);
-      parseWithTypesNative(buf, pb, cmdBuf, typesView);
+  if (autotyped && !descriptor) {
+    descriptor = infer(csv, { headers: true });
+  }
+
+  const hasQuotes = descriptor
+    ? (readU32LE(descriptor, 0) & 1) !== 0
+    : csv.includes("\"");
+  const width = descriptor ? readU32LE(descriptor, 4) : undefined;
+
+  if (autotyped) {
+    if (!fusedTypedParseJsNative) {
+      throw new Error("@rs-csv/core: typed parsing requires the fused native or WASM binding");
     }
-    const rows = interpretTyped(emptyInput, cmdBuf, csv);
-
-    if (descHeaders) {
-      const startIdx = wantHeaders ? 1 : 0;
-      const headers = descHeaders;
-      const out: Record<string, FieldValue>[] = new Array(rows.length - startIdx);
-      for (let i = startIdx; i < rows.length; i++) {
-        const obj: Record<string, FieldValue> = {};
-        for (let j = 0; j < headers.length; j++) {obj[headers[j]] = rows[i][j];}
-        out[i - startIdx] = obj;
-      }
-      return out;
+    const useDescHeaders = !!(opts?.headers !== false && !wantHeaders && descriptorProvided && descriptor
+      && readDescHeaderCount(descriptor, width!) > 0);
+    const skipHeader = wantHeaders || useDescHeaders;
+    const rows = parseTypedAligned(csv, descriptor!, skipHeader);
+    if (wantHeaders || useDescHeaders) {
+      const headers = getHeaders(csv, descriptor, descriptorProvided, wantHeaders);
+      return toObjects(headers, rows, 0);
     }
-
-    if (wantHeaders && rows.length > 0) {
-      const headers = rows[0].map(String);
-      const out: Record<string, FieldValue>[] = new Array(rows.length - 1);
-      for (let i = 1; i < rows.length; i++) {
-        const obj: Record<string, FieldValue> = {};
-        for (let j = 0; j < headers.length; j++) {obj[headers[j]] = rows[i][j];}
-        out[i - 1] = obj;
-      }
-      return out;
-    }
-
     return rows;
   }
 
   const rawRows = hasQuotes ? parseQuotedRows(csv) : parseUnquotedJS(csv, width);
   if (rawRows.length === 0) {return [];}
 
-  const headers = descHeaders ?? (wantHeaders ? rawRows[0] : null);
-  const dataRows = headers ? rawRows.slice(1) : rawRows;
-
-  if (headers) {
-    return rowsToObjects(headers, dataRows, userSchema);
-  }
-
-  if (userSchema) {return applySchema(dataRows, userSchema);}
-  return dataRows;
-}
-
-export function parse(csv: string, opts?: ParseOptions): unknown[] {
-  if (opts?.descriptor) {
-    return parseWithDescriptor(csv, opts.descriptor, opts);
-  }
-
-  const type = opts?.type;
-  const headers = opts?.headers === true;
-  const schema = Array.isArray(type) ? type : undefined;
-  const autotyped = type === true;
-  const hasQuotes = csv.includes('"');
-
-  if (autotyped) {
-    return headers ? parseAutotypedWithHeaders(csv) : parseAutotypedRows(csv);
-  }
-
-  const rawRows = hasQuotes ? parseQuotedRows(csv) : parseUnquotedJS(csv);
-  if (rawRows.length === 0) {return [];}
-
-  if (headers) {
-    return rowsToObjects(rawRows[0], rawRows.slice(1), schema);
+  if (wantHeaders) {
+    const headers = descriptor ? getHeaders(csv, descriptor, descriptorProvided, wantHeaders) : rawRows[0];
+    return toObjectsStr(headers, rawRows.slice(descriptor ? 1 : 1), schema);
   }
 
   if (schema) {return applySchema(rawRows, schema);}

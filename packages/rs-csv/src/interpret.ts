@@ -2,24 +2,15 @@ import type { FieldValue, Row } from "./types.js";
 import { readU32LE } from "./types.js";
 
 const decoder = new TextDecoder();
-
-const OP_STR = 0;
-const OP_APPEND = 1;
-const OP_NUM = 2;
-const OP_BOOL = 3;
-const OP_NULL = 4;
-const OP_BIGINT = 5;
-const OP_EOF = 0x7f;
-const EOL_BIT = 0x80;
-const TYPE_MASK = 0x7f;
+const SIDE_BUF_BIT = 0x80000000;
+const NULL_SENTINEL_LO = 0x00000001;
+const NULL_SENTINEL_HI = 0x7FF00000;
+const TYPE_NUMBER = 1;
+const TYPE_BOOLEAN = 2;
+const TYPE_BIGINT = 3;
 
 const COMPACT_EOL = 0x80000000;
 const COMPACT_POS_MASK = 0x7FFFFFFF;
-
-function sliceField(str: string | undefined, input: Uint8Array, off: number, len: number): string {
-  if (str != null) {return str.slice(off, off + len);}
-  return decoder.decode(input.subarray(off, off + len));
-}
 
 export function interpretCompact(str: string, posBuf: Uint8Array): string[][] {
   const u32 = new Uint32Array(posBuf.buffer, posBuf.byteOffset, posBuf.byteLength >> 2);
@@ -60,43 +51,65 @@ export function interpretCompact(str: string, posBuf: Uint8Array): string[][] {
   return rows;
 }
 
-export function interpretTyped(input: Uint8Array, cmdBuf: Uint8Array, str?: string): Row[] {
-  const view = new DataView(cmdBuf.buffer, cmdBuf.byteOffset, cmdBuf.byteLength);
-  const rows: Row[] = [];
+export function interpretAligned(csv: string, output: Uint8Array, sideBuf: Uint8Array): Row[] {
+  const fieldCount = readU32LE(output, 0);
+  if (fieldCount === 0) {return [];}
+  const width = readU32LE(output, 4);
+  const rowCount = readU32LE(output, 8);
+  const recordStart = (16 + width + 7) & ~7;
+  const byteOff = output.byteOffset + recordStart;
+  const f64 = new Float64Array(output.buffer, byteOff, fieldCount);
+  const u32 = new Uint32Array(output.buffer, byteOff, fieldCount * 2);
+  const lastCol = width - 1;
+
+  const metaOff = recordStart + fieldCount * 8 + 8;
+  const fallbackCount = readU32LE(output, metaOff + 4);
+  const fbOff = metaOff + 8;
+
+  const rows: Row[] = new Array(rowCount);
+  let ri = 0;
+  let col = 0;
   let row: FieldValue[] = [];
-  let pos = 0;
+  let fbIdx = 0;
+  let idx = 0;
 
-  for (;;) {
-    const op = cmdBuf[pos];
-    const type = op & TYPE_MASK;
-    if (type === OP_EOF) {break;}
-    const eol = op & EOL_BIT;
+  for (let i = 0; i < fieldCount; i++) {
+    const t = output[16 + col];
+    const lo = u32[idx]; idx++;
+    const hi = u32[idx]; idx++;
 
-    if (type === OP_APPEND) {
-      const offset = readU32LE(cmdBuf, pos + 1);
-      const len = readU32LE(cmdBuf, pos + 5);
-      const prev = row.length > 0 ? row[row.length - 1] : "";
-      row[row.length - 1] = (prev as string) + sliceField(str, input, offset, len);
-      pos += 9;
-      if (eol) { rows.push(row); row = []; }
-      continue;
+    if (lo === NULL_SENTINEL_LO && hi === NULL_SENTINEL_HI) {
+      row.push(undefined);
+    } else if (t === TYPE_NUMBER) {
+      const val = f64[i];
+      if (val === val) {
+        row.push(val);
+      } else if (fbIdx < fallbackCount) {
+        const fo = readU32LE(output, fbOff + fbIdx * 8);
+        const fl = readU32LE(output, fbOff + fbIdx * 8 + 4);
+        row.push(csv.slice(fo, fo + fl));
+        fbIdx++;
+      } else {
+        row.push(val);
+      }
+    } else if (t === TYPE_BOOLEAN) {
+      row.push(lo !== 0);
+    } else if (lo & SIDE_BUF_BIT) {
+      const realOff = lo & ~SIDE_BUF_BIT;
+      const s = decoder.decode(sideBuf.subarray(realOff, realOff + hi));
+      row.push(t === TYPE_BIGINT ? BigInt(s) : s);
+    } else {
+      const s = csv.slice(lo, lo + hi);
+      row.push(t === TYPE_BIGINT ? BigInt(s) : s);
     }
 
-    if (type === OP_STR || type === OP_BIGINT) {
-      const offset = readU32LE(cmdBuf, pos + 1);
-      const len = readU32LE(cmdBuf, pos + 5);
-      const s = sliceField(str, input, offset, len);
-      row.push(type === OP_BIGINT ? BigInt(s) : s);
-    } else if (type === OP_NUM) {
-      row.push(view.getFloat64(pos + 1, true));
-    } else if (type === OP_BOOL) {
-      row.push(Boolean(cmdBuf[pos + 1]));
-    } else if (type === OP_NULL) {
-      row.push(cmdBuf[pos + 1] === 1 ? null : undefined);
+    if (col === lastCol) {
+      rows[ri++] = row;
+      row = [];
+      col = 0;
+    } else {
+      col++;
     }
-
-    pos += 9;
-    if (eol) { rows.push(row); row = []; }
   }
 
   return rows;

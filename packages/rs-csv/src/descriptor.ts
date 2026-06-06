@@ -167,7 +167,7 @@ export function infer(csv: string | string[], opts?: InferOptions): Descriptor {
 }
 
 export function readDescHeaders(buf: Uint8Array, width: number): string[] {
-  const count = readU32LE(buf, TYPES_OFF + width);
+  const count = readDescHeaderCount(buf, width);
   if (count === 0) { return []; }
   const out: string[] = new Array(count);
   let off = TYPES_OFF + width + 4;
@@ -180,4 +180,8 @@ export function readDescHeaders(buf: Uint8Array, width: number): string[] {
     off += len;
   }
   return out;
+}
+
+export function readDescHeaderCount(buf: Uint8Array, width: number): number {
+  return readU32LE(buf, TYPES_OFF + width);
 }

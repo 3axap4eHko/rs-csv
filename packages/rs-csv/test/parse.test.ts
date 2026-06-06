@@ -90,12 +90,12 @@ describe("blank lines", () => {
 describe("trailing comma", () => {
   test("trailing comma with newline", () => {
     const rows = parse("a,b,c\n1,2,\n4,5,6", { type: true });
-    expect(rows[1]).toEqual([1, 2, null]);
+    expect(rows[1]).toEqual([1, 2, undefined]);
   });
 
   test("trailing comma at EOF", () => {
     const rows = parse("a,b,c\n1,2,", { type: true });
-    expect(rows[1]).toEqual([1, 2, null]);
+    expect(rows[1]).toEqual([1, 2, undefined]);
   });
 });
 
@@ -112,7 +112,7 @@ describe("type: true (autotype)", () => {
 
   test("nulls", () => {
     const rows = parse("v\n\nnull\nNULL", { type: true });
-    expect(rows.slice(1).map((r: any) => r[0])).toEqual([null, null]);
+    expect(rows.slice(1).map((r: any) => r[0])).toEqual([undefined, "null", "NULL"]);
   });
 
   test("quoted values stay strings", () => {
@@ -126,6 +126,16 @@ describe("type: true (autotype)", () => {
       { name: "Alice", age: 30 },
       { name: "Bob", age: 25 },
     ]);
+  });
+
+  test("autotyped without headers infers types from row 2 onward", () => {
+    expect(parse("1\ntrue", { type: true })).toEqual([[false], [true]]);
+    expect(parse("name\n42\n99", { type: true })).toEqual([["name"], [42], [99]]);
+  });
+
+  test("autotyped inferred number columns fall back to strings instead of NaN", () => {
+    const csv = ["a", ...Array.from({ length: 100 }, (_, i) => String(i)), "x"].join("\n");
+    expect(parse(csv, { type: true, headers: true }).at(-1)).toEqual({ a: "x" });
   });
 });
 
@@ -179,11 +189,10 @@ describe("type: Converter[] (schema)", () => {
 
 describe("unicode strings", () => {
   test("non-ascii autotyped", () => {
-    const rows = parse("name,city,age\nAndr\u00e9,S\u00e3o Paulo,30\nZo\u00eb,M\u00fcnchen,25", { type: true });
+    const rows = parse("name,city,age\nAndr\u00e9,S\u00e3o Paulo,30\nZo\u00eb,M\u00fcnchen,25", { type: true, headers: true });
     expect(rows).toEqual([
-      ["name", "city", "age"],
-      ["Andr\u00e9", "S\u00e3o Paulo", 30],
-      ["Zo\u00eb", "M\u00fcnchen", 25],
+      { name: "Andr\u00e9", city: "S\u00e3o Paulo", age: 30 },
+      { name: "Zo\u00eb", city: "M\u00fcnchen", age: 25 },
     ]);
   });
 
@@ -222,6 +231,37 @@ describe("unicode strings", () => {
       { name: "Alice", quote: 'he said "hi"', empty: "" },
     ]);
   });
+
+  test("headers: true ignores descriptor header names and parses the current header row", () => {
+    const desc = infer("name\n1", { headers: true });
+    expect(parse('"first,name"\n1', { type: true, headers: true, descriptor: desc })).toEqual([
+      { "first,name": 1 },
+    ]);
+  });
+
+  test("descriptor headers are reused when headers is omitted", () => {
+    const desc = infer("name\n1", { headers: true });
+    expect(parse("ignored\n2", { type: true, descriptor: desc })).toEqual([{ name: 2 }]);
+  });
+
+  test("headers: false disables descriptor headers", () => {
+    const desc = infer("name\n1", { headers: true });
+    expect(parse("ignored\n2", { type: true, headers: false, descriptor: desc })).toEqual([
+      ["ignored"],
+      [2],
+    ]);
+  });
+
+  test("large autotyped parses do not crash when scratch buffers must grow", () => {
+    const expectedRow = [1, 2, 3, 4, 5];
+    const rowCount = 500_000;
+    const csv = "1,2,3,4,5\n".repeat(rowCount);
+    const rows = parse(csv, { type: true }) as number[][];
+
+    expect(rows.length).toBe(rowCount);
+    expect(rows[0]).toEqual(expectedRow);
+    expect(rows.at(-1)).toEqual(expectedRow);
+  }, 10000);
 });
 
 describe("line endings", () => {
@@ -237,7 +277,7 @@ describe("line endings", () => {
 
   test("bare CR is not a line ending (RFC 4180)", () => {
     const rows = parse("a,b\r1,2", { type: true });
-    expect(rows).toEqual([["a", "b\r1", 2]]);
+    expect(rows).toEqual([["a", "b\r1", "2"]]);
   });
 });
 
@@ -274,5 +314,21 @@ describe("ragged rows", () => {
   test("quoted: row with more fields than header preserves extra columns", () => {
     const result = parse('"a","b"\n"1","2","3"');
     expect(result).toEqual([["a", "b"], ["1", "2", "3"]]);
+  });
+});
+
+describe("large input (scratch buffer growth)", () => {
+  test("quoted CSV over 16MB does not crash or truncate", () => {
+    const cols = 10;
+    const rows = 430000;
+    const line = Array(cols).fill('"aaaa"').join(",");
+    const csv = Array(rows).fill(line).join("\n") + "\n";
+    expect(Buffer.byteLength(csv)).toBeGreaterThan(16 * 1024 * 1024);
+    expect(rows * cols).toBeGreaterThan(4 * 1024 * 1024);
+
+    const result = parse(csv) as string[][];
+    expect(result.length).toBe(rows);
+    expect(result[0]).toEqual(Array(cols).fill("aaaa"));
+    expect(result[rows - 1]).toEqual(Array(cols).fill("aaaa"));
   });
 });

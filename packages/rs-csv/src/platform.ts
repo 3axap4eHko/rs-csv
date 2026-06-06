@@ -2,8 +2,6 @@ import { createRequire } from "module";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 
-export type NativeParse = (input: Buffer | Uint8Array, cmdBuf: Buffer | Uint8Array, offset: number, typed: boolean, strRow: boolean) => number | bigint;
-export type NativeParseJs = (input: string, inputBuf: Buffer, cmdBuf: Buffer | Uint8Array, offset: number, typed: boolean, strRow: boolean) => number | bigint;
 export type NativeScanFieldsCompact = (input: Buffer | Uint8Array, out: Buffer | Uint8Array) => number | bigint;
 const encoder = new TextEncoder();
 
@@ -46,33 +44,11 @@ const PLATFORM_PACKAGES: Record<string, string> = {
 };
 
 const WASM_COMPAT_EXPORTS = [
-  "parseCsv",
-  "parseCsvJs",
-  "scanPositionsJs",
   "inferCsv",
   "inferCsvJs",
-  "parseWithTypes",
-  "parseWithTypesJs",
-  "parseWithTypesJsUtf16",
-  "scanFieldsBuf",
-  "scanFieldsJs",
   "scanFieldsCompact",
   "scanFieldsCompactJs",
-  "scanParseWithTypesJs",
-  "scanParseWithTypesJsUtf16",
-  "classifyCsv",
-  "classifyCsvBuf",
-  "memchrIndex",
-  "napiNoop",
-  "napiAcceptU32",
-  "napiAcceptF64",
-  "napiAcceptBool",
-  "napiAcceptBigint",
-  "napiAcceptString",
-  "napiAcceptBuffer",
-  "napiAcceptBufferMut",
-  "napiAcceptTwoBuffers",
-  "napiSumBytes",
+  "fusedTypedParseJs",
 ] as const;
 
 function hasWasmCompatExports(addon: Record<string, unknown>) {
@@ -84,7 +60,6 @@ function wrapLegacyWasm(wasm: any): Record<string, unknown> {
   const posRegion = createWasmRegion(wasm);
   const outputRegion = createWasmRegion(wasm);
   const colTypesRegion = createWasmRegion(wasm);
-  const f64Bits = new DataView(new ArrayBuffer(8));
 
   const copyInput = (input: Buffer | Uint8Array, region = inputRegion) => {
     const ptr = region.ensure(input.length);
@@ -104,29 +79,6 @@ function wrapLegacyWasm(wasm: any): Record<string, unknown> {
 
   return {
     ...wasm,
-    parseCsv(input: Buffer | Uint8Array, cmdBuf: Buffer | Uint8Array, offset: number, typed: boolean, strRow: boolean) {
-      const inputPtr = copyInput(input);
-      const cmdPtr = outputRegion.ensure(cmdBuf.length);
-      const consumed = wasm.parse_csv(inputPtr, input.length, cmdPtr, cmdBuf.length, offset, typed, strRow);
-      copyBuffer(cmdPtr, cmdBuf);
-      return consumed;
-    },
-    parseCsvJs(input: string, _inputBuf: Buffer, cmdBuf: Buffer | Uint8Array, offset: number, typed: boolean, strRow: boolean) {
-      const cmdPtr = outputRegion.ensure(cmdBuf.length);
-      const consumed = withEncodedString(input, Buffer.byteLength(input), (inputPtr, inputLen) =>
-        wasm.parse_csv(inputPtr, inputLen, cmdPtr, cmdBuf.length, offset, typed, strRow)
-      );
-      copyBuffer(cmdPtr, cmdBuf);
-      return consumed;
-    },
-    scanPositionsJs(input: string, _inputBuf: Buffer, out: Buffer) {
-      const outPtr = outputRegion.ensure(out.length);
-      const consumed = withEncodedString(input, Buffer.byteLength(input), (inputPtr, inputLen) =>
-        wasm.scan_positions(inputPtr, inputLen, outPtr, out.length)
-      );
-      copyBuffer(outPtr, out);
-      return consumed;
-    },
     inferCsv(input: Buffer | Uint8Array, out: Buffer, hasHeaders: boolean, maxSamples: number) {
       const inputPtr = copyInput(input);
       const outPtr = outputRegion.ensure(out.length);
@@ -142,76 +94,25 @@ function wrapLegacyWasm(wasm: any): Record<string, unknown> {
       copyBuffer(outPtr, out);
       return written;
     },
-    parseWithTypes(input: Buffer | Uint8Array, posBuf: Buffer, output: Buffer, colTypes: Buffer | Uint8Array) {
-      const inputPtr = copyInput(input);
-      const posPtr = copyInput(posBuf, posRegion);
+    fusedTypedParseJs(input: string, _inputBuf: Buffer, posBuf: Buffer, output: Buffer, sideBuf: Buffer, descriptor: Buffer, hasHeaders: boolean, maxSamples: number) {
+      const posPtr = posRegion.ensure(posBuf.length);
       const outputPtr = outputRegion.ensure(output.length);
-      const colTypesPtr = copyInput(colTypes, colTypesRegion);
-      const written = wasm.parse_with_types(
-        inputPtr,
-        input.length,
-        posPtr,
-        posBuf.length,
-        outputPtr,
-        output.length,
-        colTypesPtr,
-        colTypes.length,
-      );
-      copyBuffer(outputPtr, output);
-      return written;
-    },
-    parseWithTypesJs(input: string, _inputBuf: Buffer, posBuf: Buffer, output: Buffer, colTypes: Buffer | Uint8Array) {
-      const posPtr = copyInput(posBuf, posRegion);
-      const outputPtr = outputRegion.ensure(output.length);
-      const colTypesPtr = copyInput(colTypes, colTypesRegion);
+      const sidePtr = colTypesRegion.ensure(sideBuf.length);
+      const descPtr = descriptor.length > 0 ? copyInput(descriptor, inputRegion) : 0;
       const written = withEncodedString(input, Buffer.byteLength(input), (inputPtr, inputLen) =>
-        wasm.parse_with_types(
-          inputPtr,
-          inputLen,
-          posPtr,
-          posBuf.length,
-          outputPtr,
-          output.length,
-          colTypesPtr,
-          colTypes.length,
+        wasm.fused_typed_parse(
+          inputPtr, inputLen,
+          posPtr, posBuf.length,
+          outputPtr, output.length,
+          sidePtr, sideBuf.length,
+          descPtr, descriptor.length,
+          hasHeaders, maxSamples,
         )
       );
+      copyBuffer(posPtr, posBuf);
       copyBuffer(outputPtr, output);
+      sideBuf.set(new Uint8Array(wasm.memory.buffer, sidePtr, sideBuf.length));
       return written;
-    },
-    parseWithTypesJsUtf16(input: string, _inputBuf: Buffer, posBuf: Buffer, output: Buffer, colTypes: Buffer | Uint8Array) {
-      const posPtr = copyInput(posBuf, posRegion);
-      const outputPtr = outputRegion.ensure(output.length);
-      const colTypesPtr = copyInput(colTypes, colTypesRegion);
-      const written = withEncodedString(input, Buffer.byteLength(input), (inputPtr, inputLen) =>
-        wasm.parse_with_types_utf16(
-          inputPtr,
-          inputLen,
-          posPtr,
-          posBuf.length,
-          outputPtr,
-          output.length,
-          colTypesPtr,
-          colTypes.length,
-        )
-      );
-      copyBuffer(outputPtr, output);
-      return written;
-    },
-    scanFieldsBuf(input: Buffer | Uint8Array, out: Buffer) {
-      const inputPtr = copyInput(input);
-      const outPtr = outputRegion.ensure(out.length);
-      const consumed = wasm.scan_fields(inputPtr, input.length, outPtr, out.length);
-      copyBuffer(outPtr, out);
-      return consumed;
-    },
-    scanFieldsJs(input: string, _inputBuf: Buffer, out: Buffer) {
-      const outPtr = outputRegion.ensure(out.length);
-      const consumed = withEncodedString(input, Buffer.byteLength(input), (inputPtr, inputLen) =>
-        wasm.scan_fields(inputPtr, inputLen, outPtr, out.length)
-      );
-      copyBuffer(outPtr, out);
-      return consumed;
     },
     scanFieldsCompact(input: Buffer | Uint8Array, out: Buffer | Uint8Array) {
       const inputPtr = copyInput(input);
@@ -233,101 +134,6 @@ function wrapLegacyWasm(wasm: any): Record<string, unknown> {
       copyBuffer(outPtr, out);
       content.set(new Uint8Array(wasm.memory.buffer, compactInputPtr, Number(compactLen)), 0);
       return compactLen;
-    },
-    scanParseWithTypesJs(input: string, _inputBuf: Buffer, posBuf: Buffer, output: Buffer, colTypes: Buffer | Uint8Array) {
-      const posPtr = posRegion.ensure(posBuf.length);
-      const outputPtr = outputRegion.ensure(output.length);
-      const colTypesPtr = copyInput(colTypes, colTypesRegion);
-      const written = withEncodedString(input, Buffer.byteLength(input), (inputPtr, inputLen) => {
-        wasm.scan_fields(inputPtr, inputLen, posPtr, posBuf.length);
-        return wasm.parse_with_types(
-          inputPtr,
-          inputLen,
-          posPtr,
-          posBuf.length,
-          outputPtr,
-          output.length,
-          colTypesPtr,
-          colTypes.length,
-        );
-      });
-      copyBuffer(posPtr, posBuf);
-      copyBuffer(outputPtr, output);
-      return written;
-    },
-    scanParseWithTypesJsUtf16(input: string, _inputBuf: Buffer, posBuf: Buffer, output: Buffer, colTypes: Buffer | Uint8Array) {
-      const posPtr = posRegion.ensure(posBuf.length);
-      const outputPtr = outputRegion.ensure(output.length);
-      const colTypesPtr = copyInput(colTypes, colTypesRegion);
-      const written = withEncodedString(input, Buffer.byteLength(input), (inputPtr, inputLen) => {
-        wasm.scan_fields(inputPtr, inputLen, posPtr, posBuf.length);
-        return wasm.parse_with_types_utf16(
-          inputPtr,
-          inputLen,
-          posPtr,
-          posBuf.length,
-          outputPtr,
-          output.length,
-          colTypesPtr,
-          colTypes.length,
-        );
-      });
-      copyBuffer(posPtr, posBuf);
-      copyBuffer(outputPtr, output);
-      return written;
-    },
-    classifyCsvBuf(input: Buffer | Uint8Array, cls: Buffer) {
-      const inputPtr = copyInput(input);
-      const clsPtr = outputRegion.ensure(cls.length);
-      wasm.classify_csv(inputPtr, input.length, clsPtr, cls.length);
-      copyBuffer(clsPtr, cls);
-      return input.length;
-    },
-    classifyCsv(input: string, cls: Buffer, _inputBuf: Buffer) {
-      const clsPtr = outputRegion.ensure(cls.length);
-      const written = withEncodedString(input, Buffer.byteLength(input), (inputPtr, inputLen) => {
-        wasm.classify_csv(inputPtr, inputLen, clsPtr, cls.length);
-        return inputLen;
-      });
-      copyBuffer(clsPtr, cls);
-      return written;
-    },
-    memchrIndex(input: Buffer | Uint8Array, needle: number) {
-      return input.indexOf(needle);
-    },
-    napiNoop() {
-      return 0;
-    },
-    napiAcceptU32(n: number) {
-      return (n ^ 1) >>> 0;
-    },
-    napiAcceptF64(n: number) {
-      f64Bits.setFloat64(0, n, true);
-      return f64Bits.getUint32(0, true);
-    },
-    napiAcceptBool(b: boolean) {
-      return Number(b);
-    },
-    napiAcceptBigint(n: bigint) {
-      return Number(n & 0xFFFF_FFFFn);
-    },
-    napiAcceptString(s: string) {
-      return Buffer.byteLength(s);
-    },
-    napiAcceptBuffer(buf: Buffer | Uint8Array) {
-      return buf.length;
-    },
-    napiAcceptBufferMut(buf: Buffer | Uint8Array) {
-      if (buf.length > 0) {buf[0] ^= 1;}
-      return buf.length;
-    },
-    napiAcceptTwoBuffers(a: Buffer | Uint8Array, b: Buffer | Uint8Array) {
-      return a.length + b.length;
-    },
-    napiSumBytes(buf: Buffer | Uint8Array) {
-      let sum = 0;
-      for (const value of buf) {sum = (sum + value) >>> 0;}
-      return sum;
     },
   };
 }
@@ -368,19 +174,8 @@ function loadAddon(): Record<string, unknown> {
 
 const addon = loadAddon();
 
-export const parseFn = addon.parseCsv as NativeParse;
-export const parseFnJs = addon.parseCsvJs as NativeParseJs | undefined;
-export const scanPositionsJs = addon.scanPositionsJs as ((input: string, inputBuf: Buffer, out: Buffer) => number | bigint) | undefined;
-export const scanFieldsJs = addon.scanFieldsJs as ((input: string, inputBuf: Buffer, out: Buffer) => number | bigint) | undefined;
 export const scanFieldsCompact = addon.scanFieldsCompact as NativeScanFieldsCompact | undefined;
 export const scanFieldsCompactJs = addon.scanFieldsCompactJs as ((input: string, inputBuf: Buffer, out: Buffer, content: Buffer) => number | bigint) | undefined;
-export const classifyCsvBuf = addon.classifyCsvBuf as (input: Buffer, cls: Buffer) => number;
 export const inferCsv = addon.inferCsv as (input: Buffer | Uint8Array, out: Buffer, hasHeaders: boolean, maxSamples: number) => number | bigint;
 export const inferCsvJs = addon.inferCsvJs as ((input: string, inputBuf: Buffer, out: Buffer, hasHeaders: boolean, maxSamples: number) => number | bigint) | undefined;
-export const parseWithTypes = addon.parseWithTypes as (input: Buffer | Uint8Array, posBuf: Buffer, output: Buffer, colTypes: Buffer | Uint8Array) => number | bigint;
-export const parseWithTypesJs = addon.parseWithTypesJs as ((input: string, inputBuf: Buffer, posBuf: Buffer, output: Buffer, colTypes: Buffer | Uint8Array) => number | bigint) | undefined;
-export const parseWithTypesJsUtf16 = addon.parseWithTypesJsUtf16 as ((input: string, inputBuf: Buffer, posBuf: Buffer, output: Buffer, colTypes: Buffer | Uint8Array) => number | bigint) | undefined;
-export const scanParseWithTypesJs = addon.scanParseWithTypesJs as ((input: string, inputBuf: Buffer, posBuf: Buffer, output: Buffer, colTypes: Buffer | Uint8Array) => number | bigint) | undefined;
-export const scanParseWithTypesJsUtf16 = addon.scanParseWithTypesJsUtf16 as ((input: string, inputBuf: Buffer, posBuf: Buffer, output: Buffer, colTypes: Buffer | Uint8Array) => number | bigint) | undefined;
-export const scanFieldsBuf = addon.scanFieldsBuf as ((input: Buffer | Uint8Array, out: Buffer) => number | bigint) | undefined;
-export const memchrIndex = addon.memchrIndex as (input: Buffer, needle: number) => number;
+export const fusedTypedParseJs = addon.fusedTypedParseJs as ((input: string, inputBuf: Buffer, posBuf: Buffer, output: Buffer, sideBuf: Buffer, descriptor: Buffer, hasHeaders: boolean, maxSamples: number) => number | bigint) | undefined;

@@ -18,33 +18,6 @@ pub unsafe fn wasm_free(ptr: *mut u8, size: usize) {
 }
 
 #[wasm_bindgen]
-pub unsafe fn parse_csv(
-    input_ptr: *const u8,
-    input_len: usize,
-    cmd_ptr: *mut u8,
-    cmd_len: usize,
-    offset: usize,
-    typed: bool,
-    str_row: bool,
-) -> usize {
-    let input = std::slice::from_raw_parts(input_ptr, input_len);
-    let cmd_buf = std::slice::from_raw_parts_mut(cmd_ptr, cmd_len);
-    rs_csv_core::parse(input, cmd_buf, offset, typed, str_row)
-}
-
-#[wasm_bindgen]
-pub unsafe fn scan_positions(
-    input_ptr: *const u8,
-    input_len: usize,
-    out_ptr: *mut u8,
-    out_len: usize,
-) -> usize {
-    let input = std::slice::from_raw_parts(input_ptr, input_len);
-    let out = std::slice::from_raw_parts_mut(out_ptr, out_len);
-    rs_csv_core::scan_positions(input, out)
-}
-
-#[wasm_bindgen]
 pub unsafe fn infer_csv(
     input_ptr: *const u8,
     input_len: usize,
@@ -59,39 +32,31 @@ pub unsafe fn infer_csv(
 }
 
 #[wasm_bindgen]
-pub unsafe fn parse_with_types(
+pub unsafe fn fused_typed_parse(
     input_ptr: *const u8,
     input_len: usize,
-    pos_ptr: *const u8,
+    pos_ptr: *mut u8,
     pos_len: usize,
     output_ptr: *mut u8,
     output_len: usize,
-    col_types_ptr: *const u8,
-    col_types_len: usize,
+    side_ptr: *mut u8,
+    side_len: usize,
+    desc_ptr: *const u8,
+    desc_len: usize,
+    has_headers: bool,
+    max_samples: usize,
 ) -> usize {
     let input = std::slice::from_raw_parts(input_ptr, input_len);
-    let pos_buf = std::slice::from_raw_parts(pos_ptr, pos_len);
+    let pos_buf = std::slice::from_raw_parts_mut(pos_ptr, pos_len);
     let output = std::slice::from_raw_parts_mut(output_ptr, output_len);
-    let col_types = std::slice::from_raw_parts(col_types_ptr, col_types_len);
-    rs_csv_core::parse_with_types(input, pos_buf, output, col_types)
-}
-
-#[wasm_bindgen]
-pub unsafe fn parse_with_types_utf16(
-    input_ptr: *const u8,
-    input_len: usize,
-    pos_ptr: *const u8,
-    pos_len: usize,
-    output_ptr: *mut u8,
-    output_len: usize,
-    col_types_ptr: *const u8,
-    col_types_len: usize,
-) -> usize {
-    let input = std::slice::from_raw_parts(input_ptr, input_len);
-    let pos_buf = std::slice::from_raw_parts(pos_ptr, pos_len);
-    let output = std::slice::from_raw_parts_mut(output_ptr, output_len);
-    let col_types = std::slice::from_raw_parts(col_types_ptr, col_types_len);
-    rs_csv_core::parse_with_types_utf16(input, pos_buf, output, col_types)
+    let side_buf = std::slice::from_raw_parts_mut(side_ptr, side_len);
+    let descriptor = if desc_len == 0 {
+        None
+    } else {
+        Some(std::slice::from_raw_parts(desc_ptr, desc_len))
+    };
+    let result = rs_csv_core::fused_typed_parse(input, pos_buf, output, side_buf, descriptor, has_headers, max_samples);
+    result.output_len
 }
 
 #[wasm_bindgen]
@@ -118,23 +83,3 @@ pub unsafe fn compact_fields(
     rs_csv_core::compact_fields(input, pos_buf)
 }
 
-#[wasm_bindgen]
-pub unsafe fn classify_csv(
-    input_ptr: *const u8,
-    input_len: usize,
-    out_ptr: *mut u8,
-    out_len: usize,
-) {
-    let input = std::slice::from_raw_parts(input_ptr, input_len);
-    let out = std::slice::from_raw_parts_mut(out_ptr, out_len);
-    rs_csv_core::classify(input, out);
-}
-
-#[wasm_bindgen]
-pub unsafe fn memchr_index(input_ptr: *const u8, input_len: usize, needle: u8) -> i64 {
-    let input = std::slice::from_raw_parts(input_ptr, input_len);
-    match memchr::memchr(needle, input) {
-        Some(i) => i as i64,
-        None => -1,
-    }
-}

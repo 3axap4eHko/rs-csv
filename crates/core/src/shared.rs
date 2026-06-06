@@ -12,21 +12,6 @@ pub(crate) fn skip_bom(bytes: &[u8]) -> usize {
     }
 }
 
-pub(crate) fn skip_blank_lines(bytes: &[u8], pos: &mut usize) {
-    let len = bytes.len();
-    while *pos < len {
-        if bytes[*pos] == b'\n' {
-            *pos += 1;
-            continue;
-        }
-        if *pos + 1 < len && bytes[*pos] == b'\r' && bytes[*pos + 1] == b'\n' {
-            *pos += 2;
-            continue;
-        }
-        break;
-    }
-}
-
 pub const TYPE_STRING: u8 = 0;
 pub const TYPE_NUMBER: u8 = 1;
 pub const TYPE_BOOLEAN: u8 = 2;
@@ -66,14 +51,6 @@ pub(crate) fn detect_type(field: &[u8]) -> u8 {
         return TYPE_BIGINT;
     }
     TYPE_NUMBER
-}
-
-pub(crate) fn trim_cr(bytes: &[u8], end: usize) -> usize {
-    if end > 0 && bytes[end - 1] == b'\r' {
-        end - 1
-    } else {
-        end
-    }
 }
 
 #[cfg(target_arch = "x86_64")]
