@@ -8,6 +8,10 @@ use crate::shared::{TYPE_BOOLEAN, TYPE_NUMBER, TYPE_STRING, detect_type, write_u
 const SIDE_BUF_BIT: u32 = 0x8000_0000;
 const HEADER_FIXED: usize = 16;
 const NULL_SENTINEL: u64 = 0x7FF0_0000_0000_0001;
+// Distinct NaN payload marking a numeric parse failure, so the interpreter can
+// tell it from a genuinely parsed NaN (e.g. the literal "nan") and only then
+// consume a fallback-string entry. fast_float never produces this bit pattern.
+const FAIL_SENTINEL: u64 = 0x7FF8_0000_0000_0001;
 const EOF_AND_META_SIZE: usize = 16;
 
 pub struct AlignedResult {
@@ -134,7 +138,7 @@ fn parse_aligned_inner<M: OffsetMode, const HAS_ESCAPES: bool>(
                 if let Ok(n) = fast_float2::parse::<f64, _>(field_slice) {
                     output[wp..wp + 8].copy_from_slice(&n.to_le_bytes());
                 } else {
-                    output[wp..wp + 8].copy_from_slice(&f64::NAN.to_le_bytes());
+                    output[wp..wp + 8].copy_from_slice(&FAIL_SENTINEL.to_le_bytes());
                 }
             } else if col_type == TYPE_BOOLEAN {
                 let val = slice_or_empty(input, fs, fe).eq_ignore_ascii_case(b"true") as u64;
@@ -212,7 +216,7 @@ fn parse_aligned_inner<M: OffsetMode, const HAS_ESCAPES: bool>(
                     if let Ok(n) = fast_float2::parse::<f64, _>(field_slice) {
                         output[rp..rp + 8].copy_from_slice(&n.to_le_bytes());
                     } else {
-                        output[rp..rp + 8].copy_from_slice(&f64::NAN.to_le_bytes());
+                        output[rp..rp + 8].copy_from_slice(&FAIL_SENTINEL.to_le_bytes());
                         fallback_count += 1;
                     }
                 }

@@ -5,6 +5,8 @@ const decoder = new TextDecoder();
 const SIDE_BUF_BIT = 0x80000000;
 const NULL_SENTINEL_LO = 0x00000001;
 const NULL_SENTINEL_HI = 0x7FF00000;
+const FAIL_SENTINEL_LO = 0x00000001;
+const FAIL_SENTINEL_HI = 0x7FF80000;
 const TYPE_NUMBER = 1;
 const TYPE_BOOLEAN = 2;
 const TYPE_BIGINT = 3;
@@ -81,16 +83,13 @@ export function interpretAligned(csv: string, output: Uint8Array, sideBuf: Uint8
     if (lo === NULL_SENTINEL_LO && hi === NULL_SENTINEL_HI) {
       row.push(undefined);
     } else if (t === TYPE_NUMBER) {
-      const val = f64[i];
-      if (val === val) {
-        row.push(val);
-      } else if (fbIdx < fallbackCount) {
+      if (lo === FAIL_SENTINEL_LO && hi === FAIL_SENTINEL_HI && fbIdx < fallbackCount) {
         const fo = readU32LE(output, fbOff + fbIdx * 8);
         const fl = readU32LE(output, fbOff + fbIdx * 8 + 4);
         row.push(csv.slice(fo, fo + fl));
         fbIdx++;
       } else {
-        row.push(val);
+        row.push(f64[i]);
       }
     } else if (t === TYPE_BOOLEAN) {
       row.push(lo !== 0);

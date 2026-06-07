@@ -303,7 +303,7 @@ export function parse(csv: string, opts?: ParseOptions): unknown[] {
 
   if (wantHeaders) {
     const headers = descriptor ? getHeaders(csv, descriptor, descriptorProvided, wantHeaders) : rawRows[0];
-    return toObjectsStr(headers, rawRows.slice(descriptor ? 1 : 1), schema);
+    return toObjectsStr(headers, rawRows.slice(1), schema);
   }
 
   if (schema) {return applySchema(rawRows, schema);}

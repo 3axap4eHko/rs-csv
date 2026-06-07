@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { infer } from "../src/descriptor.ts";
+import { infer, Type } from "../src/descriptor.ts";
 import { parse } from "../src/parse.ts";
 
 describe("basic parsing (default = raw strings)", () => {
@@ -136,6 +136,14 @@ describe("type: true (autotype)", () => {
   test("autotyped inferred number columns fall back to strings instead of NaN", () => {
     const csv = ["a", ...Array.from({ length: 100 }, (_, i) => String(i)), "x"].join("\n");
     expect(parse(csv, { type: true, headers: true }).at(-1)).toEqual({ a: "x" });
+  });
+
+  test("forced NUMBER column keeps literal nan distinct from a non-numeric fallback", () => {
+    const desc = infer("0", { types: [Type.Number] });
+    const rows = parse("nan\nx\n5\n", { type: true, descriptor: desc }) as unknown[][];
+    expect(Number.isNaN(rows[0][0])).toBe(true);
+    expect(rows[1][0]).toBe("x");
+    expect(rows[2][0]).toBe(5);
   });
 });
 
