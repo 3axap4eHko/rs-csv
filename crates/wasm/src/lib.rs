@@ -68,7 +68,8 @@ pub unsafe fn scan_fields(
 ) -> usize {
     let input = std::slice::from_raw_parts(input_ptr, input_len);
     let out = std::slice::from_raw_parts_mut(out_ptr, out_len);
-    rs_csv_core::scan_fields(input, out)
+    rs_csv_core::scan_fields(input, out);
+    input_len
 }
 
 #[wasm_bindgen]

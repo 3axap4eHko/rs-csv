@@ -3,7 +3,7 @@ use crate::offset_mode::{
     ByteOffsets, OffsetMode, Utf16Offsets, next_field_start, slice_or_empty,
 };
 use crate::scan_positions::{FIELD_CRLF, FIELD_ESCAPED, FIELD_POS_MASK, FIELD_QUOTED};
-use crate::shared::{TYPE_BOOLEAN, TYPE_NUMBER, TYPE_STRING, write_u32};
+use crate::shared::{TYPE_BOOLEAN, TYPE_NUMBER, TYPE_STRING, detect_type, write_u32};
 
 const SIDE_BUF_BIT: u32 = 0x8000_0000;
 const HEADER_FIXED: usize = 16;
@@ -399,16 +399,100 @@ pub fn fused_typed_parse(
         }
     }
 
-    let mut desc_scratch = [0u8; 4096];
-    crate::infer::infer(input, &mut desc_scratch, true, max_samples);
-    let flags = u32::from_le_bytes(desc_scratch[0..4].try_into().unwrap());
-    let width = u32::from_le_bytes(desc_scratch[4..8].try_into().unwrap()) as usize;
+    // No descriptor: one structural scan yields positions + the escapes flag;
+    // column types are sampled from those positions instead of a second walk.
+    let has_escapes = crate::scan_fields(input, pos_buf);
+    let width = u32::from_le_bytes(pos_buf[8..12].try_into().unwrap()) as usize;
+    let bom = u32::from_le_bytes(pos_buf[12..16].try_into().unwrap()) as usize;
+
+    let mut flags = 0u32;
+    if has_escapes {
+        flags |= CLS_HAS_ESCAPES;
+    }
+    if bom <= input.len() && !input[bom..].is_ascii() {
+        flags |= CLS_HAS_NON_ASCII;
+    }
     if width == 0 {
         return empty_result(output, flags);
     }
-    crate::scan_fields(input, pos_buf);
-    let ct_len = width.min(desc_scratch.len().saturating_sub(8));
-    parse_aligned(input, pos_buf, output, &desc_scratch[8..8 + ct_len], width, flags, side_buf, has_headers)
+
+    let mut col_types = [TYPE_STRING; 4096];
+    infer_col_types_from_positions(input, pos_buf, width, max_samples, &mut col_types);
+    let ct_len = width.min(col_types.len());
+    parse_aligned(input, pos_buf, output, &col_types[..ct_len], width, flags, side_buf, has_headers)
+}
+
+/// Samples column types from already-scanned field positions, treating the
+/// first row as a header (sampled from row 2 onward) to match `infer`.
+fn infer_col_types_from_positions(
+    input: &[u8],
+    pos_buf: &[u8],
+    width: usize,
+    max_samples: usize,
+    col_types: &mut [u8],
+) {
+    const UNSET: u8 = 0xFF;
+    for t in col_types.iter_mut() {
+        *t = UNSET;
+    }
+
+    let field_count = u32::from_le_bytes(pos_buf[0..4].try_into().unwrap()) as usize;
+    let first_start = u32::from_le_bytes(pos_buf[12..16].try_into().unwrap()) as usize;
+    let skip = width.min(field_count);
+
+    let mut byte_start = first_start;
+    let mut pos_idx = 16usize;
+    for _ in 0..skip {
+        let entry = u32::from_le_bytes(pos_buf[pos_idx..pos_idx + 4].try_into().unwrap());
+        pos_idx += 4;
+        let end = (entry & FIELD_POS_MASK) as usize;
+        let is_crlf = entry & FIELD_CRLF != 0;
+        byte_start = next_field_start(end, is_crlf, input.len());
+    }
+
+    let mut col = 0usize;
+    let mut sampled_rows = 0usize;
+    let mut i = skip;
+    while i < field_count && sampled_rows < max_samples {
+        let entry = u32::from_le_bytes(pos_buf[pos_idx..pos_idx + 4].try_into().unwrap());
+        pos_idx += 4;
+        let end = (entry & FIELD_POS_MASK) as usize;
+        let is_quoted = entry & FIELD_QUOTED != 0;
+        let is_crlf = entry & FIELD_CRLF != 0;
+
+        let (fs, fe) = if is_quoted {
+            (byte_start + 1, end.saturating_sub(1))
+        } else {
+            (byte_start, end)
+        };
+        if fe > fs && col < col_types.len() {
+            let t = if is_quoted {
+                TYPE_STRING
+            } else {
+                detect_type(slice_or_empty(input, fs, fe))
+            };
+            let cur = &mut col_types[col];
+            if *cur == UNSET {
+                *cur = t;
+            } else if *cur != t {
+                *cur = TYPE_STRING;
+            }
+        }
+
+        byte_start = next_field_start(end, is_crlf, input.len());
+        col += 1;
+        if col == width {
+            col = 0;
+            sampled_rows += 1;
+        }
+        i += 1;
+    }
+
+    for t in col_types.iter_mut() {
+        if *t == UNSET {
+            *t = TYPE_STRING;
+        }
+    }
 }
 
 #[cfg(test)]
@@ -550,5 +634,32 @@ mod tests {
         assert_eq!(row_count, 1);
         let width = read_u32(&output, 4) as usize;
         assert_eq!(width, 2);
+    }
+
+    #[test]
+    fn fused_crlf_quoted_does_not_route_to_side_buffer() {
+        // CRLF + quoted, no real escapes: the escapes flag must stay off so the
+        // fast path runs and nothing is flattened into the side buffer.
+        let input = "a,b\r\n\"x\",\"y\"\r\n\"p\",\"q\"\r\n";
+        let bytes = input.as_bytes();
+        let mut pos_buf = vec![0u8; 16 + bytes.len() * 4 + 64];
+        let mut output = vec![0u8; 16384];
+        let mut side_buf = vec![0u8; 4096];
+        let res = fused_typed_parse(bytes, &mut pos_buf, &mut output, &mut side_buf, None, true, 100);
+        assert_eq!(res.side_len, 0);
+        assert_eq!(read_u32(&output, 4), 2);
+        assert_eq!(read_u32(&output, 8), 2);
+    }
+
+    #[test]
+    fn fused_real_escape_uses_side_buffer() {
+        let input = "s\n\"a\"\"b\"\n\"c\"\"d\"\n";
+        let bytes = input.as_bytes();
+        let mut pos_buf = vec![0u8; 16 + bytes.len() * 4 + 64];
+        let mut output = vec![0u8; 16384];
+        let mut side_buf = vec![0u8; 4096];
+        let res = fused_typed_parse(bytes, &mut pos_buf, &mut output, &mut side_buf, None, true, 100);
+        assert!(res.side_len >= 3);
+        assert_eq!(&side_buf[..3], b"a\"b");
     }
 }

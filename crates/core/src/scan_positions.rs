@@ -18,6 +18,7 @@ struct FieldState {
     in_quoted: bool,
     field_quoted: bool,
     field_escaped: bool,
+    escaped_any: bool,
     field_start: usize,
 }
 
@@ -46,6 +47,7 @@ impl FieldState {
             }
             self.fields_in_row = 0;
         }
+        self.escaped_any |= self.field_escaped;
         self.field_quoted = false;
         self.field_escaped = false;
     }
@@ -60,13 +62,16 @@ impl FieldState {
     }
 }
 
-pub fn scan_fields(input: &[u8], out: &mut [u8]) -> usize {
+/// Scans field positions into `out` and returns whether any escaped (`""`)
+/// field was seen, so the typed path can derive the global escapes flag
+/// without a second pass.
+pub fn scan_fields(input: &[u8], out: &mut [u8]) -> bool {
     let len = input.len();
     if len == 0 || out.len() < POS_HEADER + 4 {
         if out.len() >= 4 {
             write_u32(out, 0, 0);
         }
-        return 0;
+        return false;
     }
 
     #[cfg(target_arch = "x86_64")]
@@ -82,7 +87,7 @@ pub fn scan_fields(input: &[u8], out: &mut [u8]) -> usize {
     scan_fields_scalar(input, out)
 }
 
-fn scan_fields_scalar(input: &[u8], out: &mut [u8]) -> usize {
+fn scan_fields_scalar(input: &[u8], out: &mut [u8]) -> bool {
     let bom = skip_bom(input);
     let max_wp = out.len() - 4;
     let mut s = FieldState {
@@ -93,12 +98,13 @@ fn scan_fields_scalar(input: &[u8], out: &mut [u8]) -> usize {
         in_quoted: false,
         field_quoted: false,
         field_escaped: false,
+        escaped_any: false,
         field_start: bom,
     };
     s.begin_field(input, bom);
     let start = s.field_start;
     scan_fields_tail(input, out, &mut s, start, max_wp);
-    input.len()
+    s.escaped_any
 }
 
 fn scan_fields_tail(
@@ -170,7 +176,7 @@ fn scan_fields_tail(
 
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "ssse3,sse4.1,pclmulqdq")]
-unsafe fn scan_fields_simd_x86(input: &[u8], out: &mut [u8]) -> usize {
+unsafe fn scan_fields_simd_x86(input: &[u8], out: &mut [u8]) -> bool {
     let len = input.len();
     let bom = skip_bom(input);
     let max_wp = out.len() - 4;
@@ -183,6 +189,7 @@ unsafe fn scan_fields_simd_x86(input: &[u8], out: &mut [u8]) -> usize {
         in_quoted: false,
         field_quoted: false,
         field_escaped: false,
+        escaped_any: false,
         field_start: bom,
     };
 
@@ -219,8 +226,12 @@ unsafe fn scan_fields_simd_x86(input: &[u8], out: &mut [u8]) -> usize {
             let is_nl = (real_newlines >> bit) & 1 != 0;
 
             if s.in_quoted {
-                let esc = s.field_start < abs - 1
-                    && memchr::memchr(b'"', &input[s.field_start..abs - 1]).is_some();
+                // Closing quote sits just before the delimiter (two before for
+                // CRLF). Scanning up to it avoids a false escape hit on the CR.
+                let cr = is_nl && abs > 0 && input[abs - 1] == b'\r';
+                let content_end = abs - 1 - cr as usize;
+                let esc = s.field_start < content_end
+                    && memchr::memchr(b'"', &input[s.field_start..content_end]).is_some();
                 if esc {
                     s.field_escaped = true;
                 }
@@ -257,7 +268,7 @@ unsafe fn scan_fields_simd_x86(input: &[u8], out: &mut [u8]) -> usize {
     }
 
     scan_fields_tail(input, out, &mut s, pos, max_wp);
-    len
+    s.escaped_any
 }
 
 fn scan_fields_finish(input: &[u8], out: &mut [u8], s: &mut FieldState) {

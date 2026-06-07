@@ -1,11 +1,12 @@
 import { interpretAligned, interpretCompact } from "./interpret.js";
 import { fusedTypedParseJs as fusedTypedParseJsNative, scanFieldsCompact, scanFieldsCompactJs } from "./platform.js";
 import type { FieldValue, Row, Converter } from "./types.js";
-import { Descriptor, infer, readDescHeaderCount, readDescHeaders } from "./descriptor.js";
+import { Descriptor, readDescHeaderCount, readDescHeaders } from "./descriptor.js";
 import { readU32LE } from "./types.js";
 
 const MB = 1024 * 1024;
 const encoder = new TextEncoder();
+const EMPTY_DESC = Buffer.alloc(0);
 
 export interface ParseOptions {
   type?: boolean | Converter[];
@@ -231,11 +232,11 @@ function descriptorBuffer(descriptor: Uint8Array): Buffer {
   return Buffer.from(descriptor.buffer, descriptor.byteOffset, descriptor.byteLength);
 }
 
-function parseTypedAligned(csv: string, descriptor: Uint8Array, skipHeaderRow: boolean): Row[] {
+function parseTypedAligned(csv: string, descriptor: Uint8Array | undefined, skipHeaderRow: boolean): Row[] {
   const byteLength = Buffer.byteLength(csv);
   const input = getInputBuf(byteLength + 1);
   const positions = getPosBuf(16 + byteLength * 4 + 64);
-  const descBuf = descriptorBuffer(descriptor);
+  const descBuf = descriptor ? descriptorBuffer(descriptor) : EMPTY_DESC;
 
   let output = getAlignedBuf(byteLength * 4 + 256);
   let side = getSideBuf(byteLength + 256);
@@ -275,11 +276,7 @@ export function parse(csv: string, opts?: ParseOptions): unknown[] {
   const schema = Array.isArray(type) ? type : undefined;
   const autotyped = type === true;
   const descriptorProvided = opts?.descriptor != null;
-  let descriptor = opts?.descriptor;
-
-  if (autotyped && !descriptor) {
-    descriptor = infer(csv, { headers: true });
-  }
+  const descriptor = opts?.descriptor;
 
   const hasQuotes = descriptor
     ? (readU32LE(descriptor, 0) & 1) !== 0
@@ -293,7 +290,7 @@ export function parse(csv: string, opts?: ParseOptions): unknown[] {
     const useDescHeaders = !!(opts?.headers !== false && !wantHeaders && descriptorProvided && descriptor
       && readDescHeaderCount(descriptor, width!) > 0);
     const skipHeader = wantHeaders || useDescHeaders;
-    const rows = parseTypedAligned(csv, descriptor!, skipHeader);
+    const rows = parseTypedAligned(csv, descriptorProvided ? descriptor : undefined, skipHeader);
     if (wantHeaders || useDescHeaders) {
       const headers = getHeaders(csv, descriptor, descriptorProvided, wantHeaders);
       return toObjects(headers, rows, 0);
