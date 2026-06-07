@@ -1,5 +1,5 @@
-use napi::bindgen_prelude::*;
 use napi::JsString;
+use napi::bindgen_prelude::*;
 use napi_derive::napi;
 
 fn read_js_string_utf8(env: Env, input: JsString, buf: &mut Buffer) -> Result<usize> {
@@ -43,6 +43,7 @@ pub fn infer_csv_js(
 }
 
 #[napi]
+#[allow(clippy::too_many_arguments)]
 pub fn fused_typed_parse_js(
     env: Env,
     input: JsString,
@@ -94,4 +95,3 @@ pub fn scan_fields_compact_js(
     content[..compact_len].copy_from_slice(&bytes[..compact_len]);
     Ok(compact_len as u32)
 }
-

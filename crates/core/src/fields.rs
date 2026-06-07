@@ -365,7 +365,7 @@ mod tests {
         // >64 bytes with a quoted first field exercises the SIMD quote-parity
         // carry; seeding it from the leading quote double-counts and collapses
         // the whole input into one field.
-        let line = vec!["\"aaaa\""; 10].join(",");
+        let line = ["\"aaaa\""; 10].join(",");
         let csv = format!("{line}\n{line}\n");
         assert!(csv.len() > 64);
         assert_eq!(header(&csv), (20, 2, 10));
@@ -373,14 +373,17 @@ mod tests {
 
     #[test]
     fn leading_quote_single_wide_row_no_newline() {
-        let csv = vec!["\"aaaa\""; 20].join(",");
+        let csv = ["\"aaaa\""; 20].join(",");
         assert!(csv.len() > 64);
         assert_eq!(header(&csv), (20, 1, 20));
     }
 
     #[test]
     fn unquoted_first_field_wide_row() {
-        let line = (0..10).map(|i| format!("col{i:03}")).collect::<Vec<_>>().join(",");
+        let line = (0..10)
+            .map(|i| format!("col{i:03}"))
+            .collect::<Vec<_>>()
+            .join(",");
         let csv = format!("{line}\n{line}\n");
         assert!(csv.len() > 64);
         assert_eq!(header(&csv), (20, 2, 10));

@@ -55,7 +55,15 @@ pub unsafe fn fused_typed_parse(
     } else {
         Some(std::slice::from_raw_parts(desc_ptr, desc_len))
     };
-    let result = rs_csv_core::fused_typed_parse(input, pos_buf, output, side_buf, descriptor, has_headers, max_samples);
+    let result = rs_csv_core::fused_typed_parse(
+        input,
+        pos_buf,
+        output,
+        side_buf,
+        descriptor,
+        has_headers,
+        max_samples,
+    );
     result.output_len
 }
 
@@ -83,4 +91,3 @@ pub unsafe fn compact_fields(
     let pos_buf = std::slice::from_raw_parts_mut(pos_ptr, pos_len);
     rs_csv_core::compact_fields(input, pos_buf)
 }
-

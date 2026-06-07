@@ -328,20 +328,19 @@ unsafe fn classify_simd_x86(input: &[u8], bom: usize, mut flags: u32) -> Classif
                 pos += 1;
                 last_was_nl = true;
             }
-            b'\r' => {
-                if pos + 1 < len && input[pos + 1] == b'\n' {
-                    flags |= CLS_HAS_CRLF;
-                    fields += 1;
-                    rows += 1;
-                    if rows == 1 {
-                        first_row_fields = fields;
-                    }
-                    pos += 2;
-                    last_was_nl = true;
-                } else {
-                    pos += 1;
-                    last_was_nl = false;
+            b'\r' if pos + 1 < len && input[pos + 1] == b'\n' => {
+                flags |= CLS_HAS_CRLF;
+                fields += 1;
+                rows += 1;
+                if rows == 1 {
+                    first_row_fields = fields;
                 }
+                pos += 2;
+                last_was_nl = true;
+            }
+            b'\r' => {
+                pos += 1;
+                last_was_nl = false;
             }
             _ => {
                 pos += 1;
